@@ -104,7 +104,7 @@ function Append-Log($text) {
 $worker = New-Object System.ComponentModel.BackgroundWorker
 $worker.WorkerReportsProgress = $true
 
-$worker.DoWork = {
+$worker.add_DoWork({
     param($sender, $e)
     $path = $e.Argument
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -127,14 +127,14 @@ $worker.DoWork = {
     $err = $p.StandardError.ReadToEnd()
     if ($err) { $sender.ReportProgress(0, "STDERR: $err") }
     $e.Result = $p.ExitCode
-}
+})
 
-$worker.ProgressChanged = {
+$worker.add_ProgressChanged({
     param($sender, $e)
     Append-Log $e.UserState
-}
+})
 
-$worker.RunWorkerCompleted = {
+$worker.add_RunWorkerCompleted({
     param($sender, $e)
     $btnRun.Enabled = $true
     $btnSum.Enabled = $true
@@ -153,7 +153,7 @@ $worker.RunWorkerCompleted = {
     } catch {
         $status.Text = 'Done.'
     }
-}
+})
 
 # ---------- Button handlers ----------
 $btnRun.Add_Click({
