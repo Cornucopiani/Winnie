@@ -2,7 +2,8 @@
 # Usage: .\build\portable.ps1 [-OutDir dist]
 
 [CmdletBinding()]
-param([string]$OutDir = (Join-Path $PSScriptRoot '..\dist'))
+param([string]$OutDir = '')
+if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot '..\dist' }
 
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')

@@ -28,7 +28,6 @@ $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 
-$y = 12
 function New-Label($text, $x, $y, $w=200, $h=22) {
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $text
@@ -64,7 +63,6 @@ if (Test-Elevated) {
 }
 $form.Controls.Add($elevLabel)
 
-# Buttons grid
 $btnRun = New-Button 'Run Diagnostics' 12 80 210 40
 $btnDash = New-Button 'Open Dashboard' 234 80 210 40
 $btnSum = New-Button 'Generate AI Summary' 456 80 210 40
@@ -100,58 +98,42 @@ function Append-Log($text) {
     $log.ScrollToCaret()
 }
 
-# ---------- Background worker ----------
-$worker = New-Object System.ComponentModel.BackgroundWorker
-$worker.WorkerReportsProgress = $true
-
-$worker.add_DoWork({
-    param($sender, $e)
-    $path = $e.Argument
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'powershell.exe'
-    $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$path`""
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-    $p = [System.Diagnostics.Process]::Start($psi)
-    while (-not $p.HasExited) {
-        $line = $p.StandardOutput.ReadLine()
-        if ($null -ne $line -and $line -ne '') { $sender.ReportProgress(0, $line) }
-        Start-Sleep -Milliseconds 80
+# ---------- Timer-based collection (avoids PowerShell runspace issues) ----------
+$script:proc = $null
+$script:timer = New-Object System.Windows.Forms.Timer
+$script:timer.Interval = 100
+$script:timer.Add_Tick({
+    if ($null -eq $script:proc) { return }
+    # drain stdout
+    while ($script:proc.StandardOutput.Peek() -ne -1) {
+        $line = $script:proc.StandardOutput.ReadLine()
+        if ($line) { Append-Log $line }
     }
-    while ($p.StandardOutput.Peek() -ne -1) {
-        $l = $p.StandardOutput.ReadLine()
-        if ($l) { $sender.ReportProgress(0, $l) }
+    while ($script:proc.StandardError.Peek() -ne -1) {
+        $line = $script:proc.StandardError.ReadLine()
+        if ($line) { Append-Log "STDERR: $line" }
     }
-    $err = $p.StandardError.ReadToEnd()
-    if ($err) { $sender.ReportProgress(0, "STDERR: $err") }
-    $e.Result = $p.ExitCode
-})
-
-$worker.add_ProgressChanged({
-    param($sender, $e)
-    Append-Log $e.UserState
-})
-
-$worker.add_RunWorkerCompleted({
-    param($sender, $e)
-    $btnRun.Enabled = $true
-    $btnSum.Enabled = $true
-    $btnAna.Enabled = $true
-    $progress.Style = 'Blocks'
-    $progress.Value = 100
-    $progress.MarqueeAnimationSpeed = 0
-    try {
-        if (Test-Path $dataPath) {
-            $d = Get-Content $dataPath -Raw | ConvertFrom-Json
-            $status.Text = "Done. Health score: $($d.health.score)/100 | Issues: $($d.health.issues.Count)"
-            Append-Log "----- Health score: $($d.health.score)/100, $($d.health.issues.Count) issues -----"
-        } else {
-            $status.Text = 'Done (no data.json produced)'
+    if ($script:proc.HasExited) {
+        $script:timer.Stop()
+        $progress.Style = 'Blocks'
+        $progress.Value = 100
+        $progress.MarqueeAnimationSpeed = 0
+        $btnRun.Enabled = $true
+        $btnSum.Enabled = $true
+        $btnAna.Enabled = $true
+        try {
+            if (Test-Path $dataPath) {
+                $d = Get-Content $dataPath -Raw | ConvertFrom-Json
+                $status.Text = "Done. Health score: $($d.health.score)/100 | Issues: $($d.health.issues.Count)"
+                Append-Log "----- Health score: $($d.health.score)/100, $($d.health.issues.Count) issues -----"
+            } else {
+                $status.Text = 'Done (no data.json produced)'
+            }
+        } catch {
+            $status.Text = 'Done.'
+            Append-Log "Finalize error: $($_.Exception.Message)"
         }
-    } catch {
-        $status.Text = 'Done.'
+        $script:proc = $null
     }
 })
 
@@ -165,7 +147,15 @@ $btnRun.Add_Click({
     $progress.Value = 0
     $status.Text = 'Collecting diagnostics...'
     Append-Log '=== Starting collection ==='
-    $worker.RunWorkerAsync($collectPath)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'powershell.exe'
+    $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$collectPath`""
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $script:proc = [System.Diagnostics.Process]::Start($psi)
+    $script:timer.Start()
 })
 
 $btnDash.Add_Click({
@@ -225,5 +215,6 @@ $btnElev.Add_Click({
     try { [System.Diagnostics.Process]::Start($psi) | Out-Null; $form.Close() } catch {}
 })
 
+$form.AcceptButton = $btnRun
 $form.Add_Shown({ $form.Activate() })
 [void]$form.ShowDialog()

@@ -3,9 +3,11 @@
 
 [CmdletBinding()]
 param(
-    [string]$OutputDir = (Join-Path $PSScriptRoot 'output'),
-    [string]$ConfigPath = (Join-Path $PSScriptRoot 'config\config.json')
+    [string]$OutputDir = '',
+    [string]$ConfigPath = ''
 )
+if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'output' }
+if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'config\config.json' }
 
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot

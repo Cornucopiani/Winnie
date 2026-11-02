@@ -2,10 +2,13 @@
 
 [CmdletBinding()]
 param(
-    [string]$DataPath = (Join-Path $PSScriptRoot '..\output\data.json'),
-    [string]$OutPath  = (Join-Path $PSScriptRoot '..\output\summary.md'),
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\config\config.json')
+    [string]$DataPath = '',
+    [string]$OutPath  = '',
+    [string]$ConfigPath = ''
 )
+if (-not $DataPath) { $DataPath = Join-Path $PSScriptRoot '..\output\data.json' }
+if (-not $OutPath)  { $OutPath  = Join-Path $PSScriptRoot '..\output\summary.md' }
+if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot '..\config\config.json' }
 $ErrorActionPreference = 'Continue'
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 if (-not (Test-Path $DataPath)) { throw "data.json not found. Run collect.ps1 first." }

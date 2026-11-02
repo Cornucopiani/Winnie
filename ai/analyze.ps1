@@ -3,10 +3,13 @@
 
 [CmdletBinding()]
 param(
-    [string]$SummaryPath = (Join-Path $PSScriptRoot '..\output\summary.md'),
-    [string]$OutPath     = (Join-Path $PSScriptRoot '..\output\analysis.md'),
-    [string]$ConfigPath  = (Join-Path $PSScriptRoot '..\config\config.json')
+    [string]$SummaryPath = '',
+    [string]$OutPath     = '',
+    [string]$ConfigPath  = ''
 )
+if (-not $SummaryPath) { $SummaryPath = Join-Path $PSScriptRoot '..\output\summary.md' }
+if (-not $OutPath)     { $OutPath     = Join-Path $PSScriptRoot '..\output\analysis.md' }
+if (-not $ConfigPath)  { $ConfigPath  = Join-Path $PSScriptRoot '..\config\config.json' }
 $ErrorActionPreference = 'Stop'
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $ai = $config.ai
