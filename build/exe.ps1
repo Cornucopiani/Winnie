@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
+if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
