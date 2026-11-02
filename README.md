@@ -36,6 +36,13 @@ Set-ExecutionPolicy -Scope Process Bypass
 # -> dist\ITSupportToolkit.zip  (extract anywhere, run Run.bat)
 ```
 
+## Single-file .exe (optional)
+
+```powershell
+.\build\exe.ps1 -InstallPS2EXE
+# -> dist\ITSupport.exe  (requires PS2EXE module; may trigger SmartScreen)
+```
+
 ## Output
 
 Everything lands in `output\`:
