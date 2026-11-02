@@ -6,6 +6,8 @@ param([string]$OutDir = '')
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot '..\dist' }
 
 $ErrorActionPreference = 'Stop'
+if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
+if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $dist = Join-Path $OutDir 'ITSupportToolkit'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }

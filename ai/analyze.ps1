@@ -11,6 +11,9 @@ if (-not $SummaryPath) { $SummaryPath = Join-Path $PSScriptRoot '..\output\summa
 if (-not $OutPath)     { $OutPath     = Join-Path $PSScriptRoot '..\output\analysis.md' }
 if (-not $ConfigPath)  { $ConfigPath  = Join-Path $PSScriptRoot '..\config\config.json' }
 $ErrorActionPreference = 'Stop'
+if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
+if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }
+if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $ai = $config.ai
 if (-not (Test-Path $SummaryPath)) { throw "summary.md not found. Run ai\summarize.ps1 first." }

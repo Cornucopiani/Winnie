@@ -11,6 +11,9 @@ if (-not $OutPath)  { $OutPath  = Join-Path $PSScriptRoot '..\output\summary.md'
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot '..\config\config.json' }
 
 $ErrorActionPreference = 'Continue'
+if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
+if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }
+if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 if (-not (Test-Path $DataPath)) { throw "data.json not found. Run collect.ps1 first." }
 $data = Get-Content $DataPath -Raw | ConvertFrom-Json
