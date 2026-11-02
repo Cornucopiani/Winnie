@@ -16,6 +16,9 @@ A portable, self-contained Windows diagnostics collector + dashboard + AI-ready 
 Set-ExecutionPolicy -Scope Process Bypass
 .\collect.ps1
 
+# Or launch the GUI
+.\gui.ps1
+
 # Open the dashboard
 .\output\dashboard.html
 
@@ -24,6 +27,13 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 # Optional: call an LLM API
 .\ai\analyze.ps1
+```
+
+## Portable build
+
+```powershell
+.\build\portable.ps1
+# -> dist\ITSupportToolkit.zip  (extract anywhere, run Run.bat)
 ```
 
 ## Output

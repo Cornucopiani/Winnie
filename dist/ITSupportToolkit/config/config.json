@@ -1,0 +1,18 @@
+{
+  "toolVersion": "1.0.0",
+  "eventLogHours": 72,
+  "topProcesses": 25,
+  "topServices": 50,
+  "pingTargets": ["8.8.8.8", "1.1.1.1", "gateway"],
+  "diskWarnPercent": 15,
+  "ramWarnPercent": 90,
+  "cpuWarnPercent": 90,
+  "ai": {
+    "provider": "export",
+    "model": "gpt-4o-mini",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "apiKey": "",
+    "ollamaEndpoint": "http://localhost:11434/api/generate",
+    "maxSummaryChars": 12000
+  }
+}

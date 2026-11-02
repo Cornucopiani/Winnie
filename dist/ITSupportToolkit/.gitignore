@@ -1,0 +1,7 @@
+# Generated diagnostics
+/output/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store

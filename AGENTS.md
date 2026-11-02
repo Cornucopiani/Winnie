@@ -17,6 +17,8 @@ Guidance for AI coding agents (and human contributors) working in this repositor
 
 ```
 collect.ps1                 # orchestrator: runs collectors, scores health, writes outputs
+gui.ps1                    # Windows Forms GUI wrapper (collect/dashboard/summary/analyze)
+build/portable.ps1         # creates dist\ITSupportToolkit.zip portable package
 modules/                    # one file per collector, each exposes a Get-* function
 dashboard/template.html      # self-contained dashboard; __DATA_PLACEHOLDER__ replaced at run time
 ai/summarize.ps1            # builds output/summary.md (AI-ready, token-budgeted)
