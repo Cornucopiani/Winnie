@@ -1,6 +1,7 @@
 {
   "toolVersion": "1.0.0",
   "eventLogHours": 72,
+  "eventLogDeepDays": 14,
   "topProcesses": 25,
   "topServices": 50,
   "pingTargets": ["8.8.8.8", "1.1.1.1", "gateway"],

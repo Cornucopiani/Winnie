@@ -143,6 +143,44 @@ function Build-Summary([double]$Detail = 1.0) {
         L ""
     }
 
+    if ($data.mode -eq 'Deep' -and $data.deep) {
+        L "## Deep: Event Logs (interesting)"
+        if ($data.deep.eventLogDeep.interesting) {
+            foreach ($i in $data.deep.eventLogDeep.interesting) { L "- $($i.category): $($i.count)" }
+        }
+        L ""
+        L "## Deep: Crash Dumps"
+        if ($data.deep.crashDumps.minidumps) { L "- Minidumps: $($data.deep.crashDumps.minidumps.Count)" }
+        if ($data.deep.crashDumps.memoryDump) { L "- MEMORY.DMP: $($data.deep.crashDumps.memoryDump.sizeMB) MB" }
+        if ($data.deep.crashDumps.dumpConfig) { L "- AutoReboot: $($data.deep.crashDumps.dumpConfig.autoReboot), DumpEnabled: $($data.deep.crashDumps.dumpConfig.crashDumpEnabled)" }
+        L ""
+        L "## Deep: Licensing"
+        if ($data.deep.licensing.windows) {
+            foreach ($w in $data.deep.licensing.windows) { L "- $($w.name): status=$($w.licenseStatus), key=$($w.partialKey)" }
+        }
+        if ($data.deep.licensing.oemKey) { L "- OEM key (masked): $($data.deep.licensing.oemKey)" }
+        L ""
+        L "## Deep: Network"
+        if ($data.deep.networkDeep.routes) { L "- Routes: $($data.deep.networkDeep.routes.Count)" }
+        if ($data.deep.networkDeep.connections) { L "- Connections: $($data.deep.networkDeep.connections.Count)" }
+        if ($data.deep.networkDeep.shares) { L "- Shares: $($data.deep.networkDeep.shares.Count)" }
+        L ""
+        L "## Deep: Security"
+        if ($data.deep.securityDeep.avProducts) {
+            foreach ($a in $data.deep.securityDeep.avProducts) { L "- AV: $($a.displayName) (state=$($a.productState))" }
+        }
+        if ($data.deep.securityDeep.hardening) {
+            $h = $data.deep.securityDeep.hardening
+            L "- Hardening: LSASS PPL=$($h.lsassRunAsPPL), SMB1=$($h.smb1Disabled), RDP denied=$($h.rdpEnabled)"
+        }
+        L ""
+        if ($data.deep.deepScan) {
+            L "## Deep: Scan Results"
+            L "- SFC/DISM/chkdsk/powercfg collected (see dashboard)"
+            L ""
+        }
+    }
+
     L "## Users"
     L "- Local users: $($data.users.users.Count), Administrators: $($data.users.administrators.Count)"
     L ""

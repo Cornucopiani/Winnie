@@ -14,9 +14,11 @@ A portable, self-contained Windows diagnostics collector + dashboard + AI-ready 
 ```powershell
 # Run as Administrator for full diagnostics
 Set-ExecutionPolicy -Scope Process Bypass
-.\collect.ps1
+.\collect.ps1                  # Quick mode (default)
+.\collect.ps1 -Mode Deep       # Deep forensic mode (V3-class)
+.\collect.ps1 -Mode Deep -DeepScan  # Deep + SFC/DISM/chkdsk
 
-# Or launch the GUI
+# Or launch the GUI (choose Quick/Deep in the dropdown)
 .\gui.ps1
 
 # Open the dashboard

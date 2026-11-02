@@ -77,6 +77,12 @@ tr:hover td{background:var(--panel2)}
   <details class="section"><summary><span>Storage</span><span class="chev">▶</span></summary><div class="body" id="sec-storage"></div></details>
   <details class="section"><summary><span>SMART & Disk Health</span><span class="chev">▶</span></summary><div class="body" id="sec-smart"></div></details>
   <details class="section"><summary><span>Pending Reboot</span><span class="chev">▶</span></summary><div class="body" id="sec-reboot"></div></details>
+  <details class="section"><summary><span>Deep: Event Logs</span><span class="chev">▶</span></summary><div class="body" id="sec-evdeep"></div></details>
+  <details class="section"><summary><span>Deep: Crash Dumps</span><span class="chev">▶</span></summary><div class="body" id="sec-crash"></div></details>
+  <details class="section"><summary><span>Deep: Licensing</span><span class="chev">▶</span></summary><div class="body" id="sec-license"></div></details>
+  <details class="section"><summary><span>Deep: Network</span><span class="chev">▶</span></summary><div class="body" id="sec-netdeep"></div></details>
+  <details class="section"><summary><span>Deep: Security</span><span class="chev">▶</span></summary><div class="body" id="sec-secdeep"></div></details>
+  <details class="section"><summary><span>Deep: Scan Results</span><span class="chev">▶</span></summary><div class="body" id="sec-deepscan"></div></details>
   <details class="section"><summary><span>Network</span><span class="chev">▶</span></summary><div class="body" id="sec-network"></div></details>
   <details class="section"><summary><span>Performance</span><span class="chev">▶</span></summary><div class="body" id="sec-perf"></div></details>
   <details class="section"><summary><span>Processes</span><span class="chev">▶</span></summary><div class="body" id="sec-proc"></div></details>
@@ -111,7 +117,7 @@ function bar(pct){ return `<div class="bar"><div style="width:${Math.min(100,pct
 
 // meta + score
 const m = D.meta||{};
-$('meta').textContent = `${m.hostname||''}  •  ${m.collectedAt||''}  •  v${m.toolVersion||''}  •  ${m.elevated?'Elevated':'Not elevated'}`;
+$('meta').textContent = `${m.hostname||''}  •  ${m.collectedAt||''}  •  v${m.toolVersion||''}  •  Mode: ${m.mode||'Quick'}  •  ${m.elevated?'Elevated':'Not elevated'}`;
 const sc = (D.health||{}).score;
 const scoreEl = $('score');
 scoreEl.textContent = sc!=null?sc:'--';
@@ -200,6 +206,81 @@ else {
 (function(){
   const p=D.pendingReboot||{};
   $('sec-reboot').innerHTML = kv(p,[['Component Based Servicing',p.componentBasedServicing],['Windows Update',p.windowsUpdate],['Pending File Rename',p.pendingFileRename],['Pending Computer Rename',p.pendingComputerRename],['Reboot Pending',p.rebootPending]]);
+})();
+// deep event logs
+(function(){
+  const d=(D.deep||{}).eventLogDeep;
+  let html='';
+  if(!d){ $('sec-evdeep').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.interesting&&d.interesting.length){
+    html += '<h4>Interesting events</h4>'+table(['Category','Count'], d.interesting.map(x=>[x.category,x.count]));
+  }
+  if(d.logs&&d.logs.length){
+    html += '<h4 style="margin:12px 0 6px">Logs (top 50 each)</h4>';
+    d.logs.forEach(l=>{
+      html += `<h5>${esc(l.log)} (${esc(l.count)})</h5>`+table(['Time','ID','Level','Provider','Message'], (l.events||[]).map(e=>[e.TimeCreated,e.Id,e.LevelDisplayName,e.ProviderName,e.Message]));
+    });
+  }
+  $('sec-evdeep').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// crash dumps
+(function(){
+  const d=(D.deep||{}).crashDumps;
+  let html='';
+  if(!d){ $('sec-crash').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.dumpConfig) html += '<h4>Dump config</h4>'+kv(d.dumpConfig,[['CrashDumpEnabled',d.dumpConfig.crashDumpEnabled],['MinidumpDir',d.dumpConfig.minidumpsDir],['DumpFile',d.dumpConfig.dumpFile],['AutoReboot',d.dumpConfig.autoReboot]]);
+  if(d.minidumps&&d.minidumps.length) html += '<h4 style="margin:12px 0 6px">Minidumps</h4>'+table(['Name','Size MB','Date'], d.minidumps.map(x=>[x.name,x.sizeMB,x.date]));
+  if(d.memoryDump) html += '<h4 style="margin:12px 0 6px">MEMORY.DMP</h4>'+kv(d.memoryDump,[['Name',d.memoryDump.name],['Size MB',d.memoryDump.sizeMB],['Date',d.memoryDump.date]]);
+  if(d.werReports&&d.werReports.length) html += '<h4 style="margin:12px 0 6px">WER reports</h4>'+table(['Name','Date'], d.werReports.map(x=>[x.name,x.date]));
+  if(d.pagefile&&d.pagefile.length) html += '<h4 style="margin:12px 0 6px">Pagefile</h4>'+table(['Name','Allocated MB','Current MB','Peak MB'], d.pagefile.map(x=>[x.name,x.allocatedMB,x.currentMB,x.peakMB]));
+  $('sec-crash').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// licensing
+(function(){
+  const d=(D.deep||{}).licensing;
+  let html='';
+  if(!d){ $('sec-license').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.windows&&d.windows.length) html += table(['Name','Status','Partial key','Grace'], d.windows.map(x=>[x.name,x.licenseStatus,x.partialKey,x.gracePeriod]));
+  if(d.oemKey) html += '<div style="margin-top:8px">OEM key (masked): '+esc(d.oemKey)+'</div>';
+  if(d.slmgr) html += '<h4 style="margin:12px 0 6px">slmgr /dlv</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.slmgr)+'</pre>';
+  if(d.office) html += '<h4 style="margin:12px 0 6px">Office status</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.office)+'</pre>';
+  $('sec-license').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// network deep
+(function(){
+  const d=(D.deep||{}).networkDeep;
+  let html='';
+  if(!d){ $('sec-netdeep').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.routes&&d.routes.length) html += '<h4>Routes (top 80)</h4>'+table(['Dest','NextHop','Metric','Alias'], d.routes.map(x=>[x.DestinationPrefix,x.NextHop,x.RouteMetric,x.InterfaceAlias]));
+  if(d.connections&&d.connections.length) html += '<h4 style="margin:12px 0 6px">Connections</h4>'+table(['Local','Remote','State','PID','Process'], d.connections.map(x=>[x.LocalAddress+":"+x.LocalPort, x.RemoteAddress+":"+x.RemotePort, x.State, x.OwningProcess, x.Process]));
+  if(d.wifi) html += '<h4 style="margin:12px 0 6px">Wi-Fi</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.wifi)+'</pre>';
+  if(d.shares&&d.shares.length) html += '<h4 style="margin:12px 0 6px">Shares</h4>'+table(['Name','Path','Description'], d.shares.map(x=>[x.Name,x.Path,x.Description]));
+  if(d.timeSync) html += '<h4 style="margin:12px 0 6px">Time sync</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.timeSync)+'</pre>';
+  if(d.hostsEntries&&d.hostsEntries.length) html += '<h4 style="margin:12px 0 6px">Hosts entries</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.hostsEntries.join("\\n"))+'</pre>';
+  $('sec-netdeep').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// security deep
+(function(){
+  const d=(D.deep||{}).securityDeep;
+  let html='';
+  if(!d){ $('sec-secdeep').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.avProducts&&d.avProducts.length) html += '<h4>AV products</h4>'+table(['Name','State','Path'], d.avProducts.map(x=>[x.displayName,x.productState,x.pathToSignedProductExe]));
+  if(d.hardening) html += '<h4 style="margin:12px 0 6px">Hardening</h4>'+kv(d.hardening,[['LSASS RunAsPPL',d.hardening.lsassRunAsPPL],['SMB1 disabled',d.hardening.smb1Disabled],['RDP denied',d.hardening.rdpEnabled]]);
+  if(d.passwordPolicy) html += '<h4 style="margin:12px 0 6px">Password policy</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.passwordPolicy)+'</pre>';
+  if(d.auditPolicy) html += '<h4 style="margin:12px 0 6px">Audit policy</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.auditPolicy)+'</pre>';
+  if(d.dsregStatus) html += '<h4 style="margin:12px 0 6px">dsregcmd /status</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.dsregStatus)+'</pre>';
+  $('sec-secdeep').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// deep scan
+(function(){
+  const d=(D.deep||{}).deepScan;
+  if(!d){ $('sec-deepscan').innerHTML='<div class="empty">Deep scan not run (tick the option in Deep mode)</div>'; return; }
+  let html='';
+  if(d.sfc) html += '<h4>SFC /verifyonly</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.sfc)+'</pre>';
+  if(d.dism) html += '<h4>DISM /CheckHealth</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.dism)+'</pre>';
+  if(d.chkdsk) html += '<h4>chkdsk /scan</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.chkdsk)+'</pre>';
+  if(d.energy) html += '<h4>powercfg /energy</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.energy)+'</pre>';
+  $('sec-deepscan').innerHTML = html || '<div class="empty">No data</div>';
 })();
 // network
 (function(){

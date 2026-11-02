@@ -4,7 +4,9 @@
 [CmdletBinding()]
 param(
     [string]$OutputDir = '',
-    [string]$ConfigPath = ''
+    [string]$ConfigPath = '',
+    [ValidateSet('Quick','Deep')][string]$Mode = 'Quick',
+    [switch]$DeepScan
 )
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'output' }
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'config\config.json' }
@@ -68,6 +70,18 @@ $storage       = Invoke-Collector 'storage'       { Get-StorageInfo }
 $smart         = Invoke-Collector 'smart'         { Get-SmartInfo }
 $smartctl      = Invoke-Collector 'smartctl'      { Get-SmartctlInfo -PreferredPath $config.smartctlPath }
 $pendingReboot = Invoke-Collector 'pendingReboot' { Get-PendingRebootInfo }
+
+# Deep mode collectors (V3-class forensic depth)
+$eventLogDeep = $null; $crashDumps = $null; $licensing = $null; $networkDeep = $null; $securityDeep = $null; $deepScanResult = $null
+if ($Mode -eq 'Deep') {
+    $eventLogDeep = Invoke-Collector 'eventLogDeep' { Get-EventLogDeepInfo -Days $config.eventLogDeepDays }
+    $crashDumps   = Invoke-Collector 'crashDumps'   { Get-CrashDumpInfo }
+    $licensing    = Invoke-Collector 'licensing'    { Get-LicensingInfo }
+    $networkDeep  = Invoke-Collector 'networkDeep'  { Get-NetworkDeepInfo }
+    $securityDeep = Invoke-Collector 'securityDeep' { Get-SecurityDeepInfo }
+    if ($DeepScan) { $deepScanResult = Invoke-Collector 'deepScan' { Get-DeepScanInfo } }
+}
+
 $network      = Invoke-Collector 'network'       { Get-NetworkInfo -PingTargets $config.pingTargets }
 $processes    = Invoke-Collector 'processes'    { Get-ProcessInfo -Top $config.topProcesses }
 $services     = Invoke-Collector 'services'     { Get-ServiceInfo -Top $config.topServices }
@@ -168,6 +182,7 @@ $data = [ordered]@{
         collectedAt = (Get-Date).ToString('o')
         hostname    = $env:COMPUTERNAME
         toolVersion = $config.toolVersion
+        mode         = $Mode
         elevated     = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
     system       = $system
@@ -187,6 +202,15 @@ $data = [ordered]@{
     performance  = $performance
     users        = $users
     reliability  = $reliability
+    mode         = $Mode
+    deep         = [ordered]@{
+        eventLogDeep = $eventLogDeep
+        crashDumps   = $crashDumps
+        licensing    = $licensing
+        networkDeep  = $networkDeep
+        securityDeep = $securityDeep
+        deepScan     = $deepScanResult
+    }
     health       = $health
     errors       = $errors
 }

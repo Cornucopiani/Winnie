@@ -71,19 +71,37 @@ $btnFolder = New-Button 'Open Output Folder' 234 128 210 40
 $btnElev = New-Button 'Restart as Admin' 456 128 210 40
 $form.Controls.AddRange(@($btnRun,$btnDash,$btnSum,$btnAna,$btnFolder,$btnElev))
 
+# Mode selector
+$modeLabel = New-Label 'Mode:' 12 170 50 20
+$form.Controls.Add($modeLabel)
+$modeCombo = New-Object System.Windows.Forms.ComboBox
+$modeCombo.Location = New-Object System.Drawing.Point(60, 168)
+$modeCombo.Size = New-Object System.Drawing.Size(120, 24)
+$modeCombo.DropDownStyle = 'DropDownList'
+$modeCombo.Items.AddRange(@('Quick','Deep'))
+$modeCombo.SelectedIndex = 0
+$form.Controls.Add($modeCombo)
+$deepCheck = New-Object System.Windows.Forms.CheckBox
+$deepCheck.Text = 'Deep scan (SFC/DISM/chkdsk - slow)'
+$deepCheck.Location = New-Object System.Drawing.Point(190, 170)
+$deepCheck.Size = New-Object System.Drawing.Size(260, 20)
+$deepCheck.Enabled = $false
+$form.Controls.Add($deepCheck)
+$modeCombo.Add_SelectedIndexChanged({ $deepCheck.Enabled = ($modeCombo.SelectedItem -eq 'Deep') })
+
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = New-Object System.Drawing.Point(12, 180)
+$progress.Location = New-Object System.Drawing.Point(12, 196)
 $progress.Size = New-Object System.Drawing.Size(696, 18)
 $progress.Style = 'Marquee'
 $progress.MarqueeAnimationSpeed = 0
 $form.Controls.Add($progress)
 
-$status = New-Label 'Ready.' 12 202 696 20
+$status = New-Label 'Ready.' 12 218 696 20
 $status.ForeColor = [System.Drawing.Color]::LightGray
 $form.Controls.Add($status)
 
 $log = New-Object System.Windows.Forms.TextBox
-$log.Location = New-Object System.Drawing.Point(12, 228)
+$log.Location = New-Object System.Drawing.Point(12, 244)
 $log.Size = New-Object System.Drawing.Size(696, 290)
 $log.Multiline = $true
 $log.ScrollBars = 'Vertical'
@@ -149,7 +167,10 @@ $btnRun.Add_Click({
     Append-Log '=== Starting collection ==='
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'powershell.exe'
-    $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$collectPath`""
+    $mode = $modeCombo.SelectedItem
+    $args = "-ExecutionPolicy Bypass -NoProfile -File `"$collectPath`" -Mode $mode"
+    if ($deepCheck.Checked) { $args += " -DeepScan" }
+    $psi.Arguments = $args
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
