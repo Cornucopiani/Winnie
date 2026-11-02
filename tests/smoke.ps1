@@ -1,7 +1,8 @@
 # tests\smoke.ps1 - Smoke test: run collector and validate output
 param([string]$Root = (Split-Path $PSScriptRoot -Parent))
 Set-ExecutionPolicy -Scope Process Bypass -Force
-& (Join-Path $Root 'collect.ps1') -OutputDir (Join-Path $Root 'output')
+powershell -ExecutionPolicy Bypass -File (Join-Path $Root 'collect.ps1') -OutputDir (Join-Path $Root 'output')
+Write-Host "collect exit code: $LASTEXITCODE"
 if ($LASTEXITCODE -ne 0) { Write-Host "collect failed" -ForegroundColor Red; exit 1 }
 $json = Get-Content (Join-Path $Root 'output\data.json') -Raw | ConvertFrom-Json
 $required = @('meta','system','health','storage','network','performance')

@@ -4,6 +4,7 @@
   "topProcesses": 25,
   "topServices": 50,
   "pingTargets": ["8.8.8.8", "1.1.1.1", "gateway"],
+  "smartctlPath": "",
   "diskWarnPercent": 15,
   "ramWarnPercent": 90,
   "cpuWarnPercent": 90,

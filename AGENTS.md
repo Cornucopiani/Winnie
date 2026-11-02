@@ -16,7 +16,7 @@ Guidance for AI coding agents (and human contributors) working in this repositor
 ## Repository layout
 
 ```
-collect.ps1                 # orchestrator: runs collectors, scores health, writes outputs
+collect.ps1                 # orchestrator: runs collectors, scores health, writes outputs, exits 0/2
 gui.ps1                    # Windows Forms GUI wrapper (collect/dashboard/summary/analyze)
 build/portable.ps1         # creates dist\ITSupportToolkit.zip portable package
 modules/                    # one file per collector, each exposes a Get-* function

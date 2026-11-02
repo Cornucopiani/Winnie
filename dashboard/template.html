@@ -75,6 +75,8 @@ tr:hover td{background:var(--panel2)}
 
   <details class="section" open><summary><span>System & Hardware</span><span class="chev">▶</span></summary><div class="body" id="sec-system"></div></details>
   <details class="section"><summary><span>Storage</span><span class="chev">▶</span></summary><div class="body" id="sec-storage"></div></details>
+  <details class="section"><summary><span>SMART & Disk Health</span><span class="chev">▶</span></summary><div class="body" id="sec-smart"></div></details>
+  <details class="section"><summary><span>Pending Reboot</span><span class="chev">▶</span></summary><div class="body" id="sec-reboot"></div></details>
   <details class="section"><summary><span>Network</span><span class="chev">▶</span></summary><div class="body" id="sec-network"></div></details>
   <details class="section"><summary><span>Performance</span><span class="chev">▶</span></summary><div class="body" id="sec-perf"></div></details>
   <details class="section"><summary><span>Processes</span><span class="chev">▶</span></summary><div class="body" id="sec-proc"></div></details>
@@ -152,7 +154,7 @@ else {
     ['Last Boot',s.lastBoot],['BIOS',s.biosVersion+' ('+s.biosDate+')'],
     ['Timezone',s.timezone],['Locale',s.locale],
   ]);
-  if(h.battery) html += '<h4 style="margin:12px 0 6px">Battery</h4>'+kv(h.battery,[['Name',h.battery.name],['Charge',h.battery.estimatedCharge+'%'],['Runtime',h.battery.estimatedRuntime+' min'],['Status',h.battery.status]]);
+  if(h.battery) html += '<h4 style="margin:12px 0 6px">Battery</h4>'+kv(h.battery,[['Name',h.battery.name],['Charge',h.battery.estimatedCharge+'%'],['Runtime',h.battery.estimatedRuntime+' min'],['Status',h.battery.status],['Wear',h.battery.wearPercent+'%'],['Cycles',h.battery.cycleCount],['Design mWh',h.battery.designCapacity_mWh],['Full mWh',h.battery.fullChargeCapacity_mWh]]);
   if(h.gpus&&h.gpus.length) html += '<h4 style="margin:12px 0 6px">GPU</h4>'+table(['Name','VRAM (GB)','Driver','Status'], h.gpus.map(g=>[g.name,g.vramGB,g.driver,g.status]));
   if(h.motherboard) html += '<h4 style="margin:12px 0 6px">Motherboard</h4>'+kv(h.motherboard,[['Manufacturer',h.motherboard.manufacturer],['Product',h.motherboard.product]]);
   $('sec-system').innerHTML = html;
@@ -174,6 +176,31 @@ else {
   $('sec-storage').innerHTML = html || '<div class="empty">No data</div>';
 })();
 
+// smart
+(function(){
+  const s=D.smart||{}, sc=D.smartctl||{};
+  let html='';
+  if(s.disks&&s.disks.length){
+    s.disks.forEach(d=>{
+      html += `<h4>Disk ${esc(d.diskIndex)} - ${esc(d.model)} (predictFailure=${esc(d.predictFailure)})</h4>`;
+      if(d.attributes&&d.attributes.length){
+        html += table(['ID','Name','Current','Worst','Threshold','Raw','PreFail'], d.attributes.map(a=>[a.id,a.name,a.current,a.worst,a.threshold,a.raw,a.preFail?'Yes':'No']));
+      }
+    });
+  } else { html += '<div class="empty">No native SMART data</div>'; }
+  if(sc.available){
+    html += '<h4 style="margin:12px 0 6px">smartctl devices</h4>';
+    if(sc.devices&&sc.devices.length){
+      html += table(['Name','Model','SMART passed','Used %','Media errors','Spare','Critical warning'], sc.devices.map(d=>[d.name,d.model,d.smartPassed,d.percentageUsed,d.mediaErrors,d.availableSpare,d.criticalWarning]));
+    } else { html += '<div class="empty">No smartctl devices</div>'; }
+  } else { html += '<div class="empty">smartctl not installed (optional)</div>'; }
+  $('sec-smart').innerHTML = html;
+})();
+// pending reboot
+(function(){
+  const p=D.pendingReboot||{};
+  $('sec-reboot').innerHTML = kv(p,[['Component Based Servicing',p.componentBasedServicing],['Windows Update',p.windowsUpdate],['Pending File Rename',p.pendingFileRename],['Pending Computer Rename',p.pendingComputerRename],['Reboot Pending',p.rebootPending]]);
+})();
 // network
 (function(){
   const n=D.network||{};
