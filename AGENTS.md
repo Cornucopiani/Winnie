@@ -39,7 +39,9 @@ output/                     # generated artifacts (gitignored)
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\collect.ps1                       # writes output/data.json + output/dashboard.html
+.\collect.ps1                       # Quick mode (default)
+.\collect.ps1 -Mode Deep            # Deep forensic mode (V3-class)
+.\collect.ps1 -Mode Deep -DeepScan  # Deep + SFC/DISM/chkdsk (slow, elevated)
 .\output\dashboard.html             # open dashboard
 .\ai\summarize.ps1                  # writes output/summary.md
 .\ai\analyze.ps1                    # optional; configure config/config.json first
