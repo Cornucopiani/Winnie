@@ -6,7 +6,15 @@ param()
 
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
+if (-not $root) { $root = Split-Path -Parent $PSCommandPath }
+if (-not $root) { $root = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) }
+if (-not $root) { $root = (Get-Location).Path }
 $collectPath = Join-Path $root 'collect.ps1'
+# Fallback: search current directory if collect.ps1 not found
+if (-not (Test-Path $collectPath)) {
+    $found = Get-ChildItem -Path (Get-Location).Path -Filter 'collect.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $collectPath = $found.FullName; $root = $found.DirectoryName }
+}
 $dataPath = Join-Path $root 'output\data.json'
 $dashboardPath = Join-Path $root 'output\dashboard.html'
 
@@ -159,6 +167,10 @@ $script:timer.Add_Tick({
 $btnRun.Add_Click({
     try {
     Append-Log '>>> Run button clicked'
+    if (-not (Test-Path $collectPath)) {
+        Append-Log "ERROR: collect.ps1 not found. Root='$root' CollectPath='$collectPath'"
+        return
+    }
     $btnRun.Enabled = $false
     $btnSum.Enabled = $false
     $btnAna.Enabled = $false
@@ -170,7 +182,7 @@ $btnRun.Add_Click({
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'powershell.exe'
     $mode = $modeCombo.SelectedItem
-    $args = "-ExecutionPolicy Bypass -NoProfile -File `"$collectPath`" -Mode $mode"
+    $args = "-NoLogo -ExecutionPolicy Bypass -NoProfile -File `"$collectPath`" -Mode $mode"
     if ($deepCheck.Checked) { $args += " -DeepScan" }
     $psi.Arguments = $args
     $psi.UseShellExecute = $false
