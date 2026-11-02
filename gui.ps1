@@ -157,6 +157,8 @@ $script:timer.Add_Tick({
 
 # ---------- Button handlers ----------
 $btnRun.Add_Click({
+    try {
+    Append-Log '>>> Run button clicked'
     $btnRun.Enabled = $false
     $btnSum.Enabled = $false
     $btnAna.Enabled = $false
@@ -177,6 +179,7 @@ $btnRun.Add_Click({
     $psi.CreateNoWindow = $true
     $script:proc = [System.Diagnostics.Process]::Start($psi)
     $script:timer.Start()
+    } catch { Append-Log "RUN ERROR: $($_.Exception.Message)" }
 })
 
 $btnDash.Add_Click({
@@ -237,5 +240,5 @@ $btnElev.Add_Click({
 })
 
 $form.AcceptButton = $btnRun
-$form.Add_Shown({ $form.Activate() })
+$form.Add_Shown({ $form.Activate(); $btnRun.Focus() })
 [void]$form.ShowDialog()

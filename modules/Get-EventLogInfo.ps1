@@ -31,7 +31,11 @@ function Get-EventLogInfo {
     } catch {}
     # counts by level
     $counts = @{}
-    foreach ($e in $entries) { $counts[$e.level] = $counts[$e.level]+1 }
+    foreach ($e in $entries) {
+        $lvl = if ($e.level) { $e.level } else { 'Unknown' }
+        if (-not $counts.ContainsKey($lvl)) { $counts[$lvl] = 0 }
+        $counts[$lvl] = $counts[$lvl] + 1
+    }
     [pscustomobject]@{
         hours = $Hours
         total = $entries.Count

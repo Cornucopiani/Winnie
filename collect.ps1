@@ -6,7 +6,8 @@ param(
     [string]$OutputDir = '',
     [string]$ConfigPath = '',
     [ValidateSet('Quick','Deep')][string]$Mode = 'Quick',
-    [switch]$DeepScan
+    [switch]$DeepScan,
+    [switch]$Quiet
 )
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'output' }
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'config\config.json' }
@@ -28,6 +29,16 @@ function Find-Executable {
     return $null
 }
 
+$LogFile = $null
+function Write-Log {
+    param([string]$Message, [ValidateSet('INFO','OK','WARN','ERROR','DEBUG')][string]$Level = 'INFO')
+    if ($Quiet -and $Level -in 'INFO','DEBUG') { return }
+    $color = switch ($Level) { 'OK' { 'Green' } 'WARN' { 'Yellow' } 'ERROR' { 'Red' } 'DEBUG' { 'DarkGray' } default { 'Gray' } }
+    $line = "[{0}] {1}" -f $Level, $Message
+    Write-Host $line -ForegroundColor $color
+    if ($LogFile) { try { Add-Content -LiteralPath $LogFile -Value $line -ErrorAction SilentlyContinue } catch {} }
+}
+
 # load modules
 Get-ChildItem (Join-Path $root 'modules') -Filter '*.ps1' | ForEach-Object { . $_.FullName }
 
@@ -35,6 +46,7 @@ $errors = @()
 $script:Manifest = New-Object System.Collections.Generic.List[object]
 function Invoke-Collector {
     param([string]$Name, [scriptblock]$Block)
+    Write-Log "Collecting: $Name" 'INFO'
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $status = 'OK'
     $note = ''
@@ -59,10 +71,14 @@ function Invoke-Collector {
         seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
         note    = if ($note) { ($note -replace '\s+',' ').Substring(0,[Math]::Min(200,$note.Length)) } else { '' }
     })
+    $lvl = switch ($status) { 'OK' { 'OK' } 'EMPTY' { 'INFO' } default { 'WARN' } }
+    Write-Log ("  {0,-16} {1,-6} {2,6:N1}s  items={3} {4}" -f $Name, $status, $sw.Elapsed.TotalSeconds, $items, $(if ($note) { "- $note" } else { '' })) $lvl
     $result
 }
 
-Write-Host "Collecting diagnostics..." -ForegroundColor Cyan
+Write-Log "=== Winnie IT Support Toolkit v$($config.toolVersion) ===" 'INFO'
+Write-Log "Mode: $Mode | DeepScan: $DeepScan | Output: $OutputDir" 'INFO'
+Write-Log "Collecting diagnostics..." 'INFO'
 
 $system        = Invoke-Collector 'system'        { Get-SystemInfo }
 $hardware      = Invoke-Collector 'hardware'      { Get-HardwareInfo }
@@ -217,6 +233,8 @@ $data = [ordered]@{
 
 # write output
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+$LogFile = Join-Path $OutputDir 'collection.log'
+Set-Content -LiteralPath $LogFile -Value '' -Encoding UTF8
 
 $json = $data | ConvertTo-Json -Depth 8
 $json | Set-Content (Join-Path $OutputDir 'data.json') -Encoding UTF8
@@ -237,7 +255,10 @@ if (Test-Path $templatePath) {
     $embedded | Set-Content (Join-Path $OutputDir 'dashboard.html') -Encoding UTF8
 }
 
-Write-Host "Done. Score: $score/100, Issues: $($issues.Count)" -ForegroundColor Green
-Write-Host "Output: $OutputDir" -ForegroundColor Green
+Write-Log "Health score: $score/100, Issues: $($issues.Count)" 'OK'
+foreach ($i in $issues) { Write-Log "  [$($i.severity.ToUpper())] $($i.area): $($i.message)" $(if ($i.severity -eq 'critical') { 'ERROR' } elseif ($i.severity -eq 'high') { 'WARN' } else { 'INFO' }) }
+Write-Log "Manifest: $($script:Manifest.Count) collectors ($(@($script:Manifest | Where-Object status -eq 'OK').Count) OK, $(@($script:Manifest | Where-Object status -eq 'EMPTY').Count) empty, $(@($script:Manifest | Where-Object status -eq 'FAILED').Count) failed)" 'INFO'
+Write-Log "Output: $OutputDir" 'INFO'
+Write-Log "Collection log: $LogFile" 'DEBUG'
 $hasCritical = @($issues | Where-Object { $_.severity -eq 'critical' }).Count -gt 0
 if ($hasCritical) { exit 2 } else { exit 0 }
