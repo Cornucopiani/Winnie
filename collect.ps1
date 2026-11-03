@@ -7,7 +7,8 @@ param(
     [string]$ConfigPath = '',
     [ValidateSet('Quick','Deep')][string]$Mode = 'Quick',
     [switch]$DeepScan,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [switch]$SaveBaseline
 )
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'output' }
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'config\config.json' }
@@ -91,13 +92,16 @@ $smartctl      = Invoke-Collector 'smartctl'      { Get-SmartctlInfo -PreferredP
 $pendingReboot = Invoke-Collector 'pendingReboot' { Get-PendingRebootInfo }
 
 # Deep mode collectors (V3-class forensic depth)
-$eventLogDeep = $null; $crashDumps = $null; $licensing = $null; $networkDeep = $null; $securityDeep = $null; $deepScanResult = $null
+$eventLogDeep = $null; $crashDumps = $null; $licensing = $null; $networkDeep = $null; $securityDeep = $null; $identity = $null; $msp = $null; $storageDeep = $null; $deepScanResult = $null
 if ($Mode -eq 'Deep') {
     $eventLogDeep = Invoke-Collector 'eventLogDeep' { Get-EventLogDeepInfo -Days $config.eventLogDeepDays }
     $crashDumps   = Invoke-Collector 'crashDumps'   { Get-CrashDumpInfo }
     $licensing    = Invoke-Collector 'licensing'    { Get-LicensingInfo }
     $networkDeep  = Invoke-Collector 'networkDeep'  { Get-NetworkDeepInfo }
     $securityDeep = Invoke-Collector 'securityDeep' { Get-SecurityDeepInfo }
+    $identity     = Invoke-Collector 'identity'     { Get-IdentityInfo }
+    $msp          = Invoke-Collector 'msp'          { Get-MspInfo }
+    $storageDeep  = Invoke-Collector 'storageDeep'  { Get-StorageDeepInfo }
     if ($DeepScan) { $deepScanResult = Invoke-Collector 'deepScan' { Get-DeepScanInfo } }
 }
 
@@ -110,6 +114,8 @@ $drivers      = Invoke-Collector 'drivers'      { Get-DriverInfo }
 $software     = Invoke-Collector 'software'     { Get-SoftwareInfo }
 $security     = Invoke-Collector 'security'     { Get-SecurityInfo }
 $performance  = Invoke-Collector 'performance'  { Get-PerformanceInfo }
+$perfSampled  = Invoke-Collector 'perfSampled'  { Get-PerformanceSampledInfo }
+$updatesFw    = Invoke-Collector 'updatesFirmware' { Get-UpdatesFirmwareInfo }
 $users        = Invoke-Collector 'users'        { Get-UserInfo }
 $reliability  = Invoke-Collector 'reliability'  { Get-ReliabilityInfo }
 
@@ -120,6 +126,7 @@ function Add-Issue { param($severity,$area,$message) $script:issues += [pscustom
 # disk
 if ($storage.volumes) {
     foreach ($v in $storage.volumes) {
+        if ($v.drive -in $config.ignoredVolumes) { continue }
         if ($v.usedPercent -ge (100-$config.diskWarnPercent)) {
             Add-Issue 'high' 'Storage' "Drive $($v.drive) is $($v.usedPercent)% full ($($v.freeGB) GB free)"
         }
@@ -136,7 +143,8 @@ if ($storage.physicalDisks) {
 if ($performance.cpuLoadPercent -ge $config.cpuWarnPercent) { Add-Issue 'medium' 'Performance' "CPU load $($performance.cpuLoadPercent)%" }
 if ($performance.memoryUsedPercent -ge $config.ramWarnPercent) { Add-Issue 'high' 'Memory' "RAM usage $($performance.memoryUsedPercent)%" }
 # services
-if ($services.failedAuto) { Add-Issue 'high' 'Services' "$($services.failedAuto.Count) auto-start services not running" }
+$failedAutoFiltered = @($services.failedAuto | Where-Object { $_.name -notin $config.ignoredServices })
+if ($failedAutoFiltered.Count -gt 0) { Add-Issue 'high' 'Services' "$($failedAutoFiltered.Count) auto-start services not running" }
 # drivers
 if ($drivers.problemCount -gt 0) { Add-Issue 'medium' 'Drivers' "$($drivers.problemCount) devices with errors" }
 # updates
@@ -181,6 +189,35 @@ if ($smartctl.available -and $smartctl.devices) {
 }
 # battery wear
 if ($hardware.battery -and $hardware.battery.wearPercent -ge 40) { Add-Issue 'medium' 'Battery' "Battery wear is $($hardware.battery.wearPercent)% of design capacity" }
+# identity
+if ($identity -and $identity.secureChannel -eq $false) { Add-Issue 'high' 'Identity' 'Computer secure channel is broken' }
+# network port tests
+if ($network.portTests) {
+    $failedPorts = @($network.portTests | Where-Object { -not $_.success })
+    if ($failedPorts.Count -gt 0) { Add-Issue 'high' 'Network' "DC port test failures: $($failedPorts.port -join ', ')" }
+}
+if ($network.dnsResolution) {
+    $failedDns = @($network.dnsResolution | Where-Object { $_.result -eq 'FAILED' })
+    if ($failedDns.Count -gt 0) { Add-Issue 'medium' 'Network' "DNS resolution failed: $($failedDns.name -join ', ')" }
+}
+# updates failed
+if ($updatesFw -and $updatesFw.failedCount -gt 0) { Add-Issue 'medium' 'Updates' "$($updatesFw.failedCount) failed update installs in history" }
+# sampled CPU
+if ($perfSampled.sampledCpu -and $perfSampled.sampledCpu.Count -gt 0) {
+    $topCpu = $perfSampled.sampledCpu | Select-Object -First 1
+    if ($topCpu.avgCpu -ge 50) { Add-Issue 'medium' 'Performance' "High sampled CPU: $($topCpu.name) at $($topCpu.avgCpu)%" }
+}
+# crash events
+if ($crashDumps.crashEvents) {
+    $bugchecks = @($crashDumps.crashEvents | Where-Object { $_.category -eq 'BugCheck' })
+    if ($bugchecks.Count -gt 0) { Add-Issue 'critical' 'Stability' "$($bugchecks.Count) bugcheck events in last 30 days" }
+    $appErrs = @($crashDumps.crashEvents | Where-Object { $_.category -eq 'AppError' })
+    if ($appErrs.Count -gt 5) { Add-Issue 'medium' 'Stability' "$($appErrs.Count) application error events" }
+}
+# MSP duplicate agents
+if ($msp.duplicateAgents -and $msp.duplicateAgents.Count -gt 0) { Add-Issue 'low' 'Software' "Duplicate RMM/remote agents: $($msp.duplicateAgents.agent -join ', ')" }
+# expiring certs
+if ($msp.expiringCerts -and $msp.expiringCerts.Count -gt 0) { Add-Issue 'medium' 'Security' "$($msp.expiringCerts.Count) certificates expiring within 30 days" }
 
 # score: start 100, deduct by severity
 $score = 100
@@ -219,6 +256,8 @@ $data = [ordered]@{
     software     = $software
     security     = $security
     performance  = $performance
+    perfSampled  = $perfSampled
+    updatesFirmware = $updatesFw
     users        = $users
     reliability  = $reliability
     mode         = $Mode
@@ -228,6 +267,9 @@ $data = [ordered]@{
         licensing    = $licensing
         networkDeep  = $networkDeep
         securityDeep = $securityDeep
+        identity     = $identity
+        msp          = $msp
+        storageDeep  = $storageDeep
         deepScan     = $deepScanResult
     }
     health       = $health
@@ -256,6 +298,33 @@ if (Test-Path $templatePath) {
     $template = Get-Content $templatePath -Raw
     $embedded = $template -replace '__DATA_PLACEHOLDER__', ($json -replace '</script>','<\/script>')
     $embedded | Set-Content (Join-Path $OutputDir 'dashboard.html') -Encoding UTF8
+}
+
+# Baseline diff
+$baselinePath = Join-Path $OutputDir 'baseline.json'
+if (Test-Path $baselinePath) {
+    try {
+        $prev = Get-Content $baselinePath -Raw | ConvertFrom-Json
+        $diffSb = New-Object System.Text.StringBuilder
+        [void]$diffSb.AppendLine("# Baseline diff")
+        [void]$diffSb.AppendLine("Previous: $($prev.meta.collectedAt) score=$($prev.health.score)")
+        [void]$diffSb.AppendLine("Current:  $($data.meta.collectedAt) score=$score")
+        [void]$diffSb.AppendLine("Score delta: $([math]::Round($score - $prev.health.score,1))")
+        $prevIssues = @($prev.health.issues | ForEach-Object { "$($_.area): $($_.message)" })
+        $currIssues = @($issues | ForEach-Object { "$($_.area): $($_.message)" })
+        $new = @($currIssues | Where-Object { $_ -notin $prevIssues })
+        $resolved = @($prevIssues | Where-Object { $_ -notin $currIssues })
+        [void]$diffSb.AppendLine("New issues: $($new.Count)")
+        foreach ($n in $new) { [void]$diffSb.AppendLine("  + $n") }
+        [void]$diffSb.AppendLine("Resolved: $($resolved.Count)")
+        foreach ($r in $resolved) { [void]$diffSb.AppendLine("  - $r") }
+        $diffSb.ToString() | Set-Content (Join-Path $OutputDir 'diff.md') -Encoding UTF8
+        Write-Log "Baseline diff written to diff.md (new=$($new.Count), resolved=$($resolved.Count))" 'INFO'
+    } catch { Write-Log "Baseline diff failed: $($_.Exception.Message)" 'WARN' }
+}
+if ($SaveBaseline) {
+    Copy-Item (Join-Path $OutputDir 'data.json') $baselinePath -Force
+    Write-Log "Baseline saved to baseline.json" 'OK'
 }
 
 Write-Log "Health score: $score/100, Issues: $($issues.Count)" 'OK'

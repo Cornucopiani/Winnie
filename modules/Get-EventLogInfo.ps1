@@ -36,11 +36,32 @@ function Get-EventLogInfo {
         if (-not $counts.ContainsKey($lvl)) { $counts[$lvl] = 0 }
         $counts[$lvl] = $counts[$lvl] + 1
     }
+    # aggregated by provider+id (expert: group by provider and ID with count, first/last, sample)
+    $aggregated = @()
+    try {
+        $aggEvents = Get-WinEvent -FilterHashtable @{ LogName=@('System','Application'); Level=1,2,3; StartTime=$since } -MaxEvents 2000 -ErrorAction SilentlyContinue
+        if ($aggEvents) {
+            $aggregated = @($aggEvents | Group-Object ProviderName, Id | ForEach-Object {
+                $new = $_.Group | Sort-Object TimeCreated -Descending | Select-Object -First 1
+                $old = $_.Group | Sort-Object TimeCreated | Select-Object -First 1
+                $msg = if ($new.Message) { ($new.Message -replace '\s+',' ').Trim() } else { '' }
+                [pscustomobject]@{
+                    count  = $_.Count
+                    source = $new.ProviderName
+                    id     = $new.Id
+                    first  = $old.TimeCreated.ToString('o')
+                    last   = $new.TimeCreated.ToString('o')
+                    sample = $msg.Substring(0, [Math]::Min(200, $msg.Length))
+                }
+            } | Sort-Object count -Descending | Select-Object -First 25)
+        }
+    } catch {}
     [pscustomobject]@{
         hours = $Hours
         total = $entries.Count
         counts = $counts
         entries = $entries
         bugchecks = $bugchecks
+        aggregated = $aggregated
     }
 }

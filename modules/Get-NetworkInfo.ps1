@@ -36,6 +36,32 @@ function Get-NetworkInfo {
         # proxy
         $proxy = $null
         try { $proxy = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction Stop).ProxyServer } catch {}
+        # DNS resolution tests
+        $dnsResolution = @()
+        try {
+            $dnsResolution += [pscustomobject]@{ name='public (microsoft.com)'; result=(Resolve-DnsName 'microsoft.com' -ErrorAction Stop | Select-Object -First 1).IPAddress }
+        } catch { $dnsResolution += [pscustomobject]@{ name='public (microsoft.com)'; result='FAILED' } }
+        $domain = (Get-CimInstance Win32_ComputerSystem).Domain
+        if ($domain -and $domain -ne 'WORKGROUP') {
+            try { $dnsResolution += [pscustomobject]@{ name="domain ($domain)"; result=(Resolve-DnsName $domain -ErrorAction Stop | Select-Object -First 1).IPAddress } }
+            catch { $dnsResolution += [pscustomobject]@{ name="domain ($domain)"; result='FAILED' } }
+            # port tests to DC
+            $portTests = @()
+            try {
+                $dc = (Resolve-DnsName "_ldap._tcp.dc._msdcs.$domain" -Type SRV -ErrorAction Stop | Select-Object -First 1).NameTarget
+                foreach ($port in 88,389,445,53) {
+                    $t = Test-NetConnection -ComputerName $dc -Port $port -WarningAction SilentlyContinue
+                    $portTests += [pscustomobject]@{ dc=$dc; port=$port; success=[bool]$t.TcpTestSucceeded; latency=$t.PingReplyDetails.RoundtripTime }
+                }
+            } catch {}
+        }
+        # Wi-Fi signal
+        $wifi = $null
+        try { $wifi = (netsh wlan show interfaces 2>&1) -join "`n" } catch {}
+        if ($wifi) { $wifi = $wifi.Substring(0,[Math]::Min(1500,$wifi.Length)) }
+        # VPN state (rough: RAS connections)
+        $vpn = $null
+        try { $vpn = @(Get-VpnConnection -ErrorAction SilentlyContinue | Select-Object Name, ConnectionStatus) } catch { $vpn = @() }
         [pscustomobject]@{
             adapters = @($adapters | ForEach-Object {
                 [pscustomobject]@{ name=$_.Name; desc=$_.InterfaceDescription; status=$_.Status; speed=$_.LinkSpeed; mac=$_.MacAddress }
@@ -52,6 +78,11 @@ function Get-NetworkInfo {
             pings = $pings
             listeningPorts = $portList
             proxy = $proxy
+            dnsResolution = $dnsResolution
+            portTests = if ($portTests) { $portTests } else { @() }
+            wifi = $wifi
+            vpn = $vpn
+            domain = $domain
         }
     } catch {
         [pscustomobject]@{ error = $_.Exception.Message }

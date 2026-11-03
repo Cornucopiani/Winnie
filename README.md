@@ -17,6 +17,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\collect.ps1                  # Quick mode (default)
 .\collect.ps1 -Mode Deep       # Deep forensic mode (V3-class)
 .\collect.ps1 -Mode Deep -DeepScan  # Deep + SFC/DISM/chkdsk
+.\collect.ps1 -SaveBaseline    # Save current run as baseline
+.\collect.ps1 -ShareSafe       # (via summarize) redact hostnames/IPs for sharing
 
 # Or launch the GUI (choose Quick/Deep in the dropdown)
 .\gui.ps1

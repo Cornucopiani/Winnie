@@ -13,6 +13,23 @@ function Get-HardwareInfo {
         try { $bStatic = Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction Stop | Select-Object -First 1 } catch {}
         try { $bFull   = Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction Stop | Select-Object -First 1 } catch {}
         try { $bCycle  = Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount -ErrorAction Stop | Select-Object -First 1 } catch {}
+        # powercfg battery report xml (fallback / more detail)
+        $battReport = $null
+        try {
+            $tmp = Join-Path $env:TEMP 'batt.xml'
+            powercfg /batteryreport /xml /output $tmp 2>&1 | Out-Null
+            if (Test-Path $tmp) {
+                [xml]$x = Get-Content $tmp -Raw
+                $bat = $x.BatteryReport.Batteries.Battery | Select-Object -First 1
+                if ($bat) {
+                    $battReport = [pscustomobject]@{
+                        designCapacity = $bat.DesignCapacity
+                        fullChargeCapacity = $bat.FullChargeCapacity
+                        cycleCount = $bat.CycleCount
+                    }
+                }
+            }
+        } catch {}
         [pscustomobject]@{
             battery = if ($battery) {
                 $b = $battery | Select-Object -First 1
@@ -32,6 +49,7 @@ function Get-HardwareInfo {
                     cycleCount           = $bCycle.CycleCount
                     manufacturer         = $bStatic.ManufactureName
                     serialNumber         = $bStatic.SerialNumber
+                    batteryReport        = $battReport
                 }
             } else { $null }
             gpus = @($gpu | ForEach-Object {

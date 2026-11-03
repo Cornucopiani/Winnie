@@ -82,13 +82,18 @@ tr:hover td{background:var(--panel2)}
   <details class="section"><summary><span>Deep: Licensing</span><span class="chev">▶</span></summary><div class="body" id="sec-license"></div></details>
   <details class="section"><summary><span>Deep: Network</span><span class="chev">▶</span></summary><div class="body" id="sec-netdeep"></div></details>
   <details class="section"><summary><span>Deep: Security</span><span class="chev">▶</span></summary><div class="body" id="sec-secdeep"></div></details>
+  <details class="section"><summary><span>Deep: MSP</span><span class="chev">▶</span></summary><div class="body" id="sec-msp"></div></details>
+  <details class="section"><summary><span>Deep: Storage</span><span class="chev">▶</span></summary><div class="body" id="sec-storagedeep"></div></details>
   <details class="section"><summary><span>Deep: Scan Results</span><span class="chev">▶</span></summary><div class="body" id="sec-deepscan"></div></details>
   <details class="section"><summary><span>Network</span><span class="chev">▶</span></summary><div class="body" id="sec-network"></div></details>
   <details class="section"><summary><span>Performance</span><span class="chev">▶</span></summary><div class="body" id="sec-perf"></div></details>
+  <details class="section"><summary><span>Performance (Sampled)</span><span class="chev">▶</span></summary><div class="body" id="sec-perfsampled"></div></details>
   <details class="section"><summary><span>Processes</span><span class="chev">▶</span></summary><div class="body" id="sec-proc"></div></details>
   <details class="section"><summary><span>Services</span><span class="chev">▶</span></summary><div class="body" id="sec-svc"></div></details>
   <details class="section"><summary><span>Event Logs</span><span class="chev">▶</span></summary><div class="body" id="sec-events"></div></details>
   <details class="section"><summary><span>Windows Updates</span><span class="chev">▶</span></summary><div class="body" id="sec-updates"></div></details>
+  <details class="section"><summary><span>Updates & Firmware</span><span class="chev">▶</span></summary><div class="body" id="sec-updatesfw"></div></details>
+  <details class="section"><summary><span>Deep: Identity</span><span class="chev">▶</span></summary><div class="body" id="sec-identity"></div></details>
   <details class="section"><summary><span>Drivers & Devices</span><span class="chev">▶</span></summary><div class="body" id="sec-drivers"></div></details>
   <details class="section"><summary><span>Installed Software</span><span class="chev">▶</span></summary><div class="body" id="sec-software"></div></details>
   <details class="section"><summary><span>Security</span><span class="chev">▶</span></summary><div class="body" id="sec-security"></div></details>
@@ -281,6 +286,62 @@ else {
   if(d.chkdsk) html += '<h4>chkdsk /scan</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.chkdsk)+'</pre>';
   if(d.energy) html += '<h4>powercfg /energy</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.energy)+'</pre>';
   $('sec-deepscan').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// perf sampled
+(function(){
+  const p=D.perfSampled||{};
+  let html='';
+  if(p.sampledCpu&&p.sampledCpu.length) html += table(['Process','Avg CPU %'], p.sampledCpu.map(x=>[x.name,x.avgCpu]));
+  html += kv(p,[['Commit charge GB',p.commitChargeGB],['CPU perf %',p.cpuPerfPct],['Free RAM MB',p.freeRamMB],['Total RAM MB',p.totalRamMB]]);
+  if(p.bootDuration&&p.bootDuration.length) html += '<h4 style="margin:12px 0 6px">Boot duration events</h4>'+table(['Time','Message'], p.bootDuration.map(x=>[x.time,x.message]));
+  $('sec-perfsampled').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// updates & firmware
+(function(){
+  const u=D.updatesFirmware||{};
+  let html='';
+  if(u.biosVersion) html += kv(u,[['BIOS version',u.biosVersion],['BIOS date',u.biosDate],['Manufacturer',u.manufacturer],['Failed updates',u.failedCount]]);
+  if(u.failed&&u.failed.length) html += '<h4 style="margin:12px 0 6px">Failed updates</h4>'+table(['Date','Title','Result','HResult'], u.failed.map(x=>[x.date,x.title,x.result,x.hresult]));
+  if(u.oldDrivers&&u.oldDrivers.length) html += '<h4 style="margin:12px 0 6px">Oldest drivers</h4>'+table(['Device','Version','Date','Manufacturer'], u.oldDrivers.map(x=>[x.DeviceName,x.DriverVersion,x.DriverDate,x.Manufacturer]));
+  $('sec-updatesfw').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// deep identity
+(function(){
+  const d=(D.deep||{}).identity;
+  let html='';
+  if(!d){ $('sec-identity').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.dsregParsed){ const kv2=Object.keys(d.dsregParsed).map(k=>[k,d.dsregParsed[k]]); html += kv({}, kv2); }
+  html += kv(d,[['Secure channel',d.secureChannel]]);
+  if(d.officeConfig) html += '<h4 style="margin:12px 0 6px">Office Click-to-Run</h4>'+kv(d.officeConfig,[['Version',d.officeConfig.version],['Channel',d.officeConfig.channel],['Platform',d.officeConfig.platform]]);
+  if(d.ostFiles&&d.ostFiles.length) html += '<h4 style="margin:12px 0 6px">OST files</h4>'+table(['Name','Size MB'], d.ostFiles.map(x=>[x.name,x.sizeMB]));
+  if(d.ospp) html += '<h4 style="margin:12px 0 6px">Office status</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.ospp)+'</pre>';
+  if(d.timeSync) html += '<h4 style="margin:12px 0 6px">Time sync</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.timeSync)+'</pre>';
+  $('sec-identity').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// deep msp
+(function(){
+  const d=(D.deep||{}).msp;
+  let html='';
+  if(!d){ $('sec-msp').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.printers&&d.printers.length) html += '<h4>Printers</h4>'+table(['Name','Driver','Port','Status','Shared'], d.printers.map(x=>[x.Name,x.DriverName,x.PortName,x.PrinterStatus,x.Shared]));
+  if(d.stuckPrintJobs&&d.stuckPrintJobs.length) html += '<h4 style="margin:12px 0 6px">Stuck print jobs</h4>'+table(['Printer','Id','Status','Size'], d.stuckPrintJobs.map(x=>[x.PrinterName,x.Id,x.JobStatus,x.Size]));
+  if(d.duplicateAgents&&d.duplicateAgents.length) html += '<h4 style="margin:12px 0 6px">Duplicate agents</h4>'+table(['Agent','Count'], d.duplicateAgents.map(x=>[x.agent,x.count]));
+  if(d.expiringCerts&&d.expiringCerts.length) html += '<h4 style="margin:12px 0 6px">Expiring certs</h4>'+table(['Subject','Expires','Thumbprint'], d.expiringCerts.map(x=>[x.Subject,x.NotAfter,x.Thumbprint]));
+  if(d.serverRoles&&d.serverRoles.length) html += '<h4 style="margin:12px 0 6px">Server roles</h4>'+table(['Name','Display'], d.serverRoles.map(x=>[x.Name,x.DisplayName]));
+  if(d.wingetUpgrade) html += '<h4 style="margin:12px 0 6px">winget upgrade</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.wingetUpgrade)+'</pre>';
+  $('sec-msp').innerHTML = html || '<div class="empty">No data</div>';
+})();
+// deep storage
+(function(){
+  const d=(D.deep||{}).storageDeep;
+  let html='';
+  if(!d){ $('sec-storagedeep').innerHTML='<div class="empty">Deep mode not run</div>'; return; }
+  if(d.topFolders&&d.topFolders.length) html += '<h4>Top folders on C:</h4>'+table(['Folder','Size GB'], d.topFolders.map(x=>[x.folder,x.sizeGB]));
+  if(d.diskImages&&d.diskImages.length) html += '<h4 style="margin:12px 0 6px">Disk images</h4>'+table(['Path','Size GB'], d.diskImages.map(x=>[x.FullName,x.SizeGB]));
+  if(d.removableVolumes&&d.removableVolumes.length) html += '<h4 style="margin:12px 0 6px">Removable volumes</h4>'+table(['Letter','Label','Type','Size GB','Free GB'], d.removableVolumes.map(x=>[x.DriveLetter,x.FileSystemLabel,x.DriveType,x.SizeGB,x.FreeGB]));
+  if(d.dismComponentStore) html += '<h4 style="margin:12px 0 6px">DISM component store</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.dismComponentStore)+'</pre>';
+  if(d.shadowStorage) html += '<h4 style="margin:12px 0 6px">Shadow storage</h4><pre style="font-size:11px;white-space:pre-wrap">'+esc(d.shadowStorage)+'</pre>';
+  $('sec-storagedeep').innerHTML = html || '<div class="empty">No data</div>';
 })();
 // network
 (function(){

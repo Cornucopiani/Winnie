@@ -4,7 +4,8 @@
 param(
     [string]$DataPath = '',
     [string]$OutPath  = '',
-    [string]$ConfigPath = ''
+    [string]$ConfigPath = '',
+    [switch]$ShareSafe
 )
 if (-not $DataPath) { $DataPath = Join-Path $PSScriptRoot '..\output\data.json' }
 if (-not $OutPath)  { $OutPath  = Join-Path $PSScriptRoot '..\output\summary.md' }
@@ -15,6 +16,7 @@ if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
 if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }
 if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+if ($config.ai.shareSafe) { $ShareSafe = $true }
 if (-not (Test-Path $DataPath)) { throw "data.json not found. Run collect.ps1 first." }
 $data = Get-Content $DataPath -Raw | ConvertFrom-Json
 
@@ -35,7 +37,8 @@ function Build-Summary([double]$Detail = 1.0) {
     L "# IT Support Diagnostic Summary"
     L ""
     L "Generated: $($data.meta.collectedAt)"
-    L "Hostname: $($data.meta.hostname)"
+    $dispHost = if ($ShareSafe) { 'HOST-' + [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($data.meta.hostname))).Replace('-','').Substring(0,8) } else { $data.meta.hostname }
+    L "Hostname: $dispHost"
     L "Tool version: $($data.meta.toolVersion)"
     L "Elevated: $($data.meta.elevated)"
     L "Health score: $($data.health.score)/100"
@@ -46,6 +49,13 @@ function Build-Summary([double]$Detail = 1.0) {
     if (-not $data.health.issues.Count) { L "- None detected" }
     L ""
 
+    L "## Context"
+    L "- Mode: $($data.meta.mode)"
+    L "- Elevated: $($data.meta.elevated)"
+    L "- Domain: $($data.system.domain)"
+    if ($data.network.domain) { L "- AD domain: $($data.network.domain)" }
+    if ($data.deep.identity.dsregParsed) { L "- AzureAdJoined: $($data.deep.identity.dsregParsed.AzureAdJoined), DomainJoined: $($data.deep.identity.dsregParsed.DomainJoined)" }
+    L ""
     L "## System"
     L "- OS: $($data.system.os) ($($data.system.osVersion), build $($data.system.osBuild))"
     L "- CPU: $($data.system.cpu) ($($data.system.cpuCores) cores / $($data.system.cpuLogical) logical)"
@@ -58,6 +68,10 @@ function Build-Summary([double]$Detail = 1.0) {
     L "- CPU load: $($data.performance.cpuLoadPercent)%"
     L "- RAM used: $($data.performance.memoryUsedPercent)% ($($data.performance.freeRamMB) MB free)"
     L "- Disk queue: $($data.performance.diskQueueLength)"
+    if ($data.perfSampled) {
+        L "- Sampled top CPU: " + (($data.perfSampled.sampledCpu | Select-Object -First 5 | ForEach-Object { "$($_.name)=$($_.avgCpu)%" }) -join ', ')
+        L "- Commit charge: $($data.perfSampled.commitChargeGB) GB, CPU perf: $($data.perfSampled.cpuPerfPct)%"
+    }
     L ""
 
     L "## Storage"
@@ -86,9 +100,15 @@ function Build-Summary([double]$Detail = 1.0) {
 
     L "## Network"
     L "- Pings: " + (($data.network.pings | ForEach-Object { "$($_.target)=$($_.success) ($($_.latency)ms)" }) -join ', ')
-    if ($data.network.ipConfig) { foreach ($i in $data.network.ipConfig) { L "- $($i.alias): $((@($i.ipv4)) -join ', ') gw=$($i.gateway)" } }
+    if ($data.network.ipConfig) { foreach ($i in $data.network.ipConfig) {
+        $ip = if ($ShareSafe) { ($i.ipv4 -replace '\d+$','xxx') } else { $i.ipv4 }
+        $gw = if ($ShareSafe) { if ($i.gateway) { ($i.gateway -replace '\d+$','xxx') } else { $i.gateway } } else { $i.gateway }
+        L "- $($i.alias): $ip gw=$gw"
+    } }
     L "- Listening ports: $($data.network.listeningPorts.Count)"
     L "- Proxy: $($data.network.proxy)"
+    if ($data.network.dnsResolution) { L "- DNS resolution: " + (($data.network.dnsResolution | ForEach-Object { "$($_.name)=$($_.result)" }) -join ', ') }
+    if ($data.network.portTests) { L "- DC port tests: " + (($data.network.portTests | ForEach-Object { "$($_.port)=$($_.success)" }) -join ', ') }
     L ""
 
     L "## Failed Auto-Start Services ($($data.services.failedAuto.Count))"
@@ -104,6 +124,10 @@ function Build-Summary([double]$Detail = 1.0) {
     if ($data.events.bugchecks.Count) { L "BSOD/crashes: $($data.events.bugchecks.Count)" ; foreach ($b in $data.events.bugchecks) { L "  - $($b.time): $(Redact $b.message)" } }
     $errs = @($data.events.entries | Where-Object { $_.level -in 'Critical','Error' } | Select-Object -First $maxEvents)
     foreach ($e in $errs) { L "- [$($e.level)] $($e.source) (id $($e.id)) $($e.time): $(Redact $e.message)" }
+    if ($data.events.aggregated) {
+        L "Aggregated (top):"
+        foreach ($a in ($data.events.aggregated | Select-Object -First 10)) { L "  - $($a.source) id=$($a.id) count=$($a.count) (first $($a.first), last $($a.last))" }
+    }
     L ""
 
     L "## Windows Updates"
@@ -130,6 +154,17 @@ function Build-Summary([double]$Detail = 1.0) {
     L "## Reliability / Crashes"
     L "- Records: $($data.reliability.count), Minidumps: $($data.reliability.minidumps.Count)"
     foreach ($m in $data.reliability.minidumps) { L "  - $($m.name) ($($m.date))" }
+    if ($data.deep.crashDumps.crashEvents) {
+        L "Crash events:"
+        foreach ($c in ($data.deep.crashDumps.crashEvents | Select-Object -First 10)) { L "  - [$($c.category)] $($c | ConvertTo-Json -Compress)" }
+    }
+    L ""
+    L "## Updates & Firmware"
+    if ($data.updatesFirmware) {
+        L "- BIOS: $($data.updatesFirmware.biosVersion) ($($data.updatesFirmware.biosDate))"
+        L "- Failed installs: $($data.updatesFirmware.failedCount)"
+        if ($data.updatesFirmware.oldDrivers) { L "- Oldest drivers: " + (($data.updatesFirmware.oldDrivers | Select-Object -First 3 | ForEach-Object { "$($_.DeviceName) ($($_.DriverDate))" }) -join '; ') }
+    }
     L ""
 
     L "## Battery"
@@ -180,6 +215,26 @@ function Build-Summary([double]$Detail = 1.0) {
         if ($data.deep.deepScan) {
             L "## Deep: Scan Results"
             L "- SFC/DISM/chkdsk/powercfg collected (see dashboard)"
+            L ""
+        }
+        if ($data.deep.identity) {
+            L "## Deep: Identity"
+            if ($data.deep.identity.dsregParsed) { L "- dsreg: " + (($data.deep.identity.dsregParsed.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ') }
+            L "- Secure channel: $($data.deep.identity.secureChannel)"
+            if ($data.deep.identity.officeConfig) { L "- Office: $($data.deep.identity.officeConfig.version) ($($data.deep.identity.officeConfig.channel))" }
+            L ""
+        }
+        if ($data.deep.msp) {
+            L "## Deep: MSP"
+            if ($data.deep.msp.duplicateAgents) { foreach ($d in $data.deep.msp.duplicateAgents) { L "- Duplicate agent: $($d.agent) ($($d.count))" } }
+            if ($data.deep.msp.expiringCerts) { L "- Expiring certs: $($data.deep.msp.expiringCerts.Count)" }
+            if ($data.deep.msp.printers) { L "- Printers: $($data.deep.msp.printers.Count)" }
+            L ""
+        }
+        if ($data.deep.storageDeep) {
+            L "## Deep: Storage"
+            if ($data.deep.storageDeep.topFolders) { L "- Top folders: " + (($data.deep.storageDeep.topFolders | Select-Object -First 5 | ForEach-Object { "$($_.folder)=$($_.sizeGB)GB" }) -join ', ') }
+            if ($data.deep.storageDeep.diskImages) { L "- Disk images: $($data.deep.storageDeep.diskImages.Count)" }
             L ""
         }
     }
