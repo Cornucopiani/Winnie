@@ -10,8 +10,8 @@ param(
     [switch]$Quiet,
     [switch]$SaveBaseline
 )
-if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot 'output' }
-if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'config\config.json' }
+if (-not $OutputDir) { $OutputDir = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'output' } else { 'output' } }
+if (-not $ConfigPath) { $ConfigPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'config\config.json' } else { 'config\config.json' } }
 
 $ErrorActionPreference = 'Continue'
 if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }

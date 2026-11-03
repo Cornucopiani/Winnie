@@ -7,9 +7,9 @@ param(
     [string]$ConfigPath = '',
     [switch]$ShareSafe
 )
-if (-not $DataPath) { $DataPath = Join-Path $PSScriptRoot '..\output\data.json' }
-if (-not $OutPath)  { $OutPath  = Join-Path $PSScriptRoot '..\output\summary.md' }
-if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot '..\config\config.json' }
+if (-not $DataPath) { $DataPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\data.json' } else { 'output\data.json' } }
+if (-not $OutPath)  { $OutPath  = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\summary.md' } else { 'output\summary.md' } }
+if (-not $ConfigPath) { $ConfigPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\config\config.json' } else { 'config\config.json' } }
 
 $ErrorActionPreference = 'Continue'
 if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }

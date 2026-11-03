@@ -7,9 +7,9 @@ param(
     [string]$OutPath     = '',
     [string]$ConfigPath  = ''
 )
-if (-not $SummaryPath) { $SummaryPath = Join-Path $PSScriptRoot '..\output\summary.md' }
-if (-not $OutPath)     { $OutPath     = Join-Path $PSScriptRoot '..\output\analysis.md' }
-if (-not $ConfigPath)  { $ConfigPath  = Join-Path $PSScriptRoot '..\config\config.json' }
+if (-not $SummaryPath) { $SummaryPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\summary.md' } else { 'output\summary.md' } }
+if (-not $OutPath)     { $OutPath     = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\analysis.md' } else { 'output\analysis.md' } }
+if (-not $ConfigPath)  { $ConfigPath  = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\config\config.json' } else { 'config\config.json' } }
 $ErrorActionPreference = 'Stop'
 if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
 if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }

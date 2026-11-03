@@ -5,18 +5,24 @@
 param()
 
 $ErrorActionPreference = 'Continue'
-$root = $PSScriptRoot
-if (-not $root) { $root = Split-Path -Parent $PSCommandPath }
-if (-not $root) { $root = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) }
+$root = $null
+if ($PSScriptRoot) { $root = $PSScriptRoot }
+elseif ($PSCommandPath) { $root = Split-Path -Parent $PSCommandPath }
+else {
+    try { $root = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {}
+}
 if (-not $root) { $root = (Get-Location).Path }
-$collectPath = Join-Path $root 'collect.ps1'
+$collectPath = $null
+if ($root) { try { $collectPath = Join-Path $root 'collect.ps1' } catch {} }
 # Fallback: search current directory if collect.ps1 not found
-if (-not (Test-Path $collectPath)) {
+if (-not $collectPath -or -not (Test-Path -LiteralPath $collectPath)) {
     $found = Get-ChildItem -Path (Get-Location).Path -Filter 'collect.ps1' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($found) { $collectPath = $found.FullName; $root = $found.DirectoryName }
 }
-$dataPath = Join-Path $root 'output\data.json'
-$dashboardPath = Join-Path $root 'output\dashboard.html'
+if (-not $collectPath) { $collectPath = 'collect.ps1' }
+if (-not $root) { $root = (Get-Location).Path }
+$dataPath = if ($root) { Join-Path $root 'output\data.json' } else { 'output\data.json' }
+$dashboardPath = if ($root) { Join-Path $root 'output\dashboard.html' } else { 'output\dashboard.html' }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -252,5 +258,5 @@ $btnElev.Add_Click({
 })
 
 $form.AcceptButton = $btnRun
-$form.Add_Shown({ $form.Activate(); $btnRun.Focus() })
+$form.Add_Shown({ $form.Activate(); $btnRun.Focus(); Append-Log "Root: $root"; Append-Log "CollectPath: $collectPath"; Append-Log "DataPath: $dataPath" })
 [void]$form.ShowDialog()
