@@ -150,10 +150,15 @@ function Finalize-Run {
     $script:timer.Stop()
     # drain remaining
     try {
-        $so = $script:proc.StandardOutput
-        while ($so.Peek() -ne -1) { $line = $so.ReadLine(); if ($line) { Append-Log $line } }
+        if ($script:logFile -and (Test-Path $script:logFile)) {
+            $fs = [IO.File]::Open($script:logFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            $fs.Seek($script:logPos, [IO.SeekOrigin]::Begin) | Out-Null
+            $sr = New-Object IO.StreamReader($fs)
+            while ($null -ne ($line = $sr.ReadLine())) { if ($line) { Append-Log $line } }
+            $sr.Close(); $fs.Close()
+        }
         $se = $script:proc.StandardError
-        while ($se.Peek() -ne -1) { $line = $se.ReadLine(); if ($line) { Append-Log "STDERR: $line" } }
+        while ($se.Peek() -ge 0) { $line = $se.ReadLine(); if ($line) { Append-Log "STDERR: $line" } }
     } catch {}
     $progress.Style = 'Blocks'
     $progress.Value = 100
@@ -179,16 +184,17 @@ function Finalize-Run {
 $script:timer.Add_Tick({
     if ($null -eq $script:proc) { return }
     try {
-        $so = $script:proc.StandardOutput
-        while ($so.Peek() -ne -1) {
-            $line = $so.ReadLine()
-            if ($line) { Append-Log $line }
+        if ($script:logFile -and (Test-Path $script:logFile)) {
+            $fs = [IO.File]::Open($script:logFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            $fs.Seek($script:logPos, [IO.SeekOrigin]::Begin) | Out-Null
+            $sr = New-Object IO.StreamReader($fs)
+            while ($null -ne ($line = $sr.ReadLine())) { if ($line) { Append-Log $line } }
+            $script:logPos = $fs.Position
+            $sr.Close(); $fs.Close()
         }
+        # also drain stderr stream
         $se = $script:proc.StandardError
-        while ($se.Peek() -ne -1) {
-            $line = $se.ReadLine()
-            if ($line) { Append-Log "STDERR: $line" }
-        }
+        while ($se.Peek() -ge 0) { $line = $se.ReadLine(); if ($line) { Append-Log "STDERR: $line" } }
     } catch { Append-Log "Timer error: $($_.Exception.Message)" }
     if ($script:proc.HasExited) { Finalize-Run }
 })
@@ -220,9 +226,13 @@ $btnRun.Add_Click({
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = $root
     $args = "-NoLogo -ExecutionPolicy Bypass -NoProfile -File `"$collectPath`" -Mode $mode"
     if ($deepCheck.Checked) { $args += " -DeepScan" }
     $psi.Arguments = $args
+    # Poll collection.log for progress (reliable across redirection)
+    $script:logFile = Join-Path $root 'output\collection.log'
+    $script:logPos = 0
     $script:finalizing = $false
     $script:proc = [System.Diagnostics.Process]::Start($psi)
     $script:timer.Start()
