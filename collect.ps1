@@ -12,8 +12,12 @@ param(
 )
 if (-not $OutputDir) { $OutputDir = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'output' } else { 'output' } }
 if (-not $ConfigPath) { $ConfigPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'config\config.json' } else { 'config\config.json' } }
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+$LogFile = Join-Path $OutputDir 'collection.log'
+Set-Content -LiteralPath $LogFile -Value '' -Encoding UTF8
 
 $ErrorActionPreference = 'Continue'
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Out.AutoFlush = $true } catch {}
 if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }
 if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }
 if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
@@ -33,13 +37,13 @@ function Find-Executable {
     return $null
 }
 
-$LogFile = $null
 function Write-Log {
     param([string]$Message, [ValidateSet('INFO','OK','WARN','ERROR','DEBUG')][string]$Level = 'INFO')
     if ($Quiet -and $Level -in 'INFO','DEBUG') { return }
     $color = switch ($Level) { 'OK' { 'Green' } 'WARN' { 'Yellow' } 'ERROR' { 'Red' } 'DEBUG' { 'DarkGray' } default { 'Gray' } }
     $line = "[{0}] {1}" -f $Level, $Message
-    Write-Host $line -ForegroundColor $color
+    try { [Console]::WriteLine($line) } catch { Write-Host $line -ForegroundColor $color }
+    [Console]::Out.Flush()
     if ($LogFile) { try { Add-Content -LiteralPath $LogFile -Value $line -ErrorAction SilentlyContinue } catch {} }
 }
 
@@ -49,7 +53,7 @@ Get-ChildItem (Join-Path $root 'modules') -Filter '*.ps1' | ForEach-Object { . $
 $errors = @()
 $script:Manifest = New-Object System.Collections.Generic.List[object]
 function Invoke-Collector {
-    param([string]$Name, [scriptblock]$Block)
+    param([string]$Name, [scriptblock]$Block, [int]$TimeoutSec = 120)
     Write-Log "Collecting: $Name" 'INFO'
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $status = 'OK'
@@ -94,7 +98,7 @@ $pendingReboot = Invoke-Collector 'pendingReboot' { Get-PendingRebootInfo }
 # Deep mode collectors (V3-class forensic depth)
 $eventLogDeep = $null; $crashDumps = $null; $licensing = $null; $networkDeep = $null; $securityDeep = $null; $identity = $null; $msp = $null; $storageDeep = $null; $deepScanResult = $null
 if ($Mode -eq 'Deep') {
-    $eventLogDeep = Invoke-Collector 'eventLogDeep' { Get-EventLogDeepInfo -Days $config.eventLogDeepDays }
+    $eventLogDeep = Invoke-Collector 'eventLogDeep' { Get-EventLogDeepInfo -Days $config.eventLogDeepDays } -TimeoutSec 300
     $crashDumps   = Invoke-Collector 'crashDumps'   { Get-CrashDumpInfo }
     $licensing    = Invoke-Collector 'licensing'    { Get-LicensingInfo }
     $networkDeep  = Invoke-Collector 'networkDeep'  { Get-NetworkDeepInfo }
@@ -109,7 +113,7 @@ $network      = Invoke-Collector 'network'       { Get-NetworkInfo -PingTargets 
 $processes    = Invoke-Collector 'processes'    { Get-ProcessInfo -Top $config.topProcesses }
 $services     = Invoke-Collector 'services'     { Get-ServiceInfo -Top $config.topServices }
 $events       = Invoke-Collector 'events'       { Get-EventLogInfo -Hours $config.eventLogHours }
-$updates      = Invoke-Collector 'updates'      { Get-UpdateInfo }
+$updates      = Invoke-Collector 'updates'      { Get-UpdateInfo } -TimeoutSec 60
 $drivers      = Invoke-Collector 'drivers'      { Get-DriverInfo }
 $software     = Invoke-Collector 'software'     { Get-SoftwareInfo }
 $security     = Invoke-Collector 'security'     { Get-SecurityInfo }
@@ -277,10 +281,6 @@ $data = [ordered]@{
 }
 
 # write output
-if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
-$LogFile = Join-Path $OutputDir 'collection.log'
-Set-Content -LiteralPath $LogFile -Value '' -Encoding UTF8
-
 $json = $data | ConvertTo-Json -Depth 8
 $json | Set-Content (Join-Path $OutputDir 'data.json') -Encoding UTF8
 
