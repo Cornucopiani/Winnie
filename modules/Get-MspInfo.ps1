@@ -24,7 +24,13 @@ function Get-MspInfo {
     try {
         # printers
         $printers = @()
-        try { $printers = @(Get-Printer -ErrorAction Stop | Select-Object Name, DriverName, PortName, PrinterStatus, Shared) } catch {}
+        try {
+            $printers = @(Get-Printer -ErrorAction Stop | ForEach-Object {
+                $st = $_.PrinterStatus
+                $statusText = switch ($st) { 0 {'Normal'} 1 {'Paused'} 2 {'Error'} 8 {'Offline'} 18 {'TonerLow'} 19 {'NoToner'} default {"Unknown($st)"} }
+                [pscustomobject]@{ Name=$_.Name; DriverName=$_.DriverName; PortName=$_.PortName; PrinterStatus=$statusText; RawStatus=$st; Shared=$_.Shared }
+            })
+        } catch {}
         $stuckJobs = @()
         try { $stuckJobs = @(Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { $_.JobStatus -ne 'Normal' } | Select-Object PrinterName, Id, JobStatus, Size) } catch {}
         # VSS writers (timed)
@@ -53,7 +59,7 @@ function Get-MspInfo {
         # winget upgrade (timed, optional)
         $winget = $null
         if (Get-Command winget -ErrorAction SilentlyContinue) {
-            try { $winget = Invoke-TimedCommand -FilePath 'winget' -Arguments @('upgrade') -TimeoutSec 30 } catch {}
+            try { $winget = Invoke-TimedCommand -FilePath 'winget' -Arguments @('upgrade','--accept-source-agreements','--disable-interactivity') -TimeoutSec 30 } catch {}
             if ($winget) { $winget = $winget.Substring(0,[Math]::Min(4000,$winget.Length)) }
         }
         # certificates expiring soon

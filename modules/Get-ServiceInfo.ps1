@@ -3,7 +3,12 @@ function Get-ServiceInfo {
     param([int]$Top = 50)
     try {
         $svcs = Get-CimInstance Win32_Service -ErrorAction Stop
-        $failed = $svcs | Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' }
+        # skip delayed-auto and trigger-start services (normally stopped)
+        $failed = $svcs | Where-Object {
+            $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' -and
+            -not (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$($_.Name)" -Name DelayedAutostart -ErrorAction SilentlyContinue).DelayedAutostart -and
+            -not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$($_.Name)\TriggerInfo")
+        }
         $stopped = $svcs | Where-Object { $_.State -eq 'Stopped' -and $_.StartMode -in 'Auto','Manual' }
         [pscustomobject]@{
             total = $svcs.Count

@@ -19,7 +19,7 @@ function Get-UpdatesFirmwareInfo {
         # driver age (oldest drivers)
         $oldDrivers = @()
         try {
-            $oldDrivers = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DriverDate } |
+            $oldDrivers = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DriverDate -and $_.DriverDate.Year -ge 2000 } |
                 Sort-Object DriverDate | Select-Object -First 10 DeviceName, DriverVersion, @{n='DriverDate';e={$_.DriverDate.ToString('yyyy-MM-dd')}}, Manufacturer)
         } catch {}
         [pscustomobject]@{

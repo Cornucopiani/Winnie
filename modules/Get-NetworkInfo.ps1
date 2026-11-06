@@ -2,7 +2,7 @@ function Get-NetworkInfo {
     [CmdletBinding()]
     param([string[]]$PingTargets = @('8.8.8.8','1.1.1.1'))
     try {
-        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name, InterfaceDescription, Status, LinkSpeed, MacAddress
+        $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | Select-Object Name, InterfaceDescription, Status, LinkSpeed, MacAddress
         $ipcfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue
         $dns = Get-DnsClientServerAddress -ErrorAction SilentlyContinue | Where-Object { $_.ServerAddresses } |
             Select-Object InterfaceAlias, @{n='Servers';e={$_.ServerAddresses -join ', '}}

@@ -5,10 +5,11 @@ function Get-PerformanceSampledInfo {
         # sampled CPU (avoid cumulative CPU seconds)
         $sampledCpu = @()
         try {
-            $samples = Get-Counter '\Process(*)\% Processor Time' -SampleInterval 2 -MaxSamples 3 -ErrorAction Stop
-            $sampledCpu = @($samples.CounterSamples | Where-Object { $_.InstanceName -notin '_total','idle' } |
-                Group-Object InstanceName | ForEach-Object {
-                    [pscustomobject]@{ name=$_.Name; avgCpu=[math]::Round((($_.Group | Measure-Object CookedValue -Average).Average / [Environment]::ProcessorCount),1) }
+            $samples = Get-Counter '\Process(*)\% Processor Time' -SampleInterval 1 -MaxSamples 2 -ErrorAction SilentlyContinue
+            $valid = @($samples.CounterSamples | Where-Object { $_.InstanceName -notin '_total','idle' })
+            $sampledCpu = @($valid | Group-Object InstanceName | ForEach-Object {
+                    $avg = ($_.Group | Measure-Object CookedValue -Average).Average
+                    [pscustomobject]@{ name=$_.Name; avgCpu=[math]::Round(($avg / [Environment]::ProcessorCount),1) }
                 } | Sort-Object avgCpu -Descending | Select-Object -First 10)
         } catch {}
         # commit charge / page file

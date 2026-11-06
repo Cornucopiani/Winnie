@@ -10,11 +10,15 @@ param(
     [switch]$Quiet,
     [switch]$SaveBaseline
 )
-if (-not $OutputDir) { $OutputDir = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'output' } else { 'output' } }
+if (-not $OutputDir) {
+    $base = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'output' } else { 'output' }
+    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    $OutputDir = Join-Path $base "$($env:COMPUTERNAME)-$stamp"
+}
 if (-not $ConfigPath) { $ConfigPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'config\config.json' } else { 'config\config.json' } }
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 $LogFile = Join-Path $OutputDir 'collection.log'
-Set-Content -LiteralPath $LogFile -Value '' -Encoding UTF8
+Write-Utf8NoBom -Path $LogFile -Content ''
 
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Out.AutoFlush = $true } catch {}
@@ -23,6 +27,18 @@ if (-not $PSScriptRoot) { try { $PSScriptRoot = Split-Path -Parent ([System.Diag
 if (-not $PSScriptRoot) { $PSScriptRoot = (Get-Location).Path }
 $root = $PSScriptRoot
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
+}
+
+# Global trap for unhandled errors
+trap {
+    if ($LogFile) { try { Add-Content -LiteralPath $LogFile -Value "[TRAP] $($_.Exception.Message)" -ErrorAction SilentlyContinue } catch {} }
+    try { Add-Content -LiteralPath (Join-Path $OutputDir 'errors.log') -Value "TRAP: $($_.Exception.Message)" -ErrorAction SilentlyContinue } catch {}
+    continue
+}
 
 function Find-Executable {
     param([string]$Preferred, [string[]]$Names, [string[]]$Candidates)
@@ -86,6 +102,8 @@ function Invoke-Collector {
 
 Write-Log "=== Winnie IT Support Toolkit v$($config.toolVersion) ===" 'INFO'
 Write-Log "Mode: $Mode | DeepScan: $DeepScan | Output: $OutputDir" 'INFO'
+$IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $IsAdmin) { Write-Log "NOT ELEVATED - admin-only collectors will be limited" 'WARN' }
 Write-Log "Collecting diagnostics..." 'INFO'
 
 $system        = Invoke-Collector 'system'        { Get-SystemInfo }
@@ -282,14 +300,14 @@ $data = [ordered]@{
 
 # write output
 $json = $data | ConvertTo-Json -Depth 8
-$json | Set-Content (Join-Path $OutputDir 'data.json') -Encoding UTF8
+Write-Utf8NoBom -Path (Join-Path $OutputDir 'data.json') -Content $json
 
 # manifest + errors log
-$script:Manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $OutputDir 'manifest.json') -Encoding UTF8
+Write-Utf8NoBom -Path (Join-Path $OutputDir 'manifest.json') -Content ($script:Manifest | ConvertTo-Json -Depth 4)
 if ($errors.Count -gt 0) {
-    $errors | ForEach-Object { "$($_.collector): $($_.error)" } | Set-Content (Join-Path $OutputDir 'errors.log') -Encoding UTF8
+    Write-Utf8NoBom -Path (Join-Path $OutputDir 'errors.log') -Content (($errors | ForEach-Object { "$($_.collector): $($_.error)" }) -join "`n")
 } else {
-    Set-Content (Join-Path $OutputDir 'errors.log') '' -Encoding UTF8
+    Write-Utf8NoBom -Path (Join-Path $OutputDir 'errors.log') -Content ''
 }
 
 # render dashboard
@@ -297,7 +315,7 @@ $templatePath = Join-Path $root 'dashboard\template.html'
 if (Test-Path $templatePath) {
     $template = Get-Content $templatePath -Raw
     $embedded = $template -replace '__DATA_PLACEHOLDER__', ($json -replace '</script>','<\/script>')
-    $embedded | Set-Content (Join-Path $OutputDir 'dashboard.html') -Encoding UTF8
+    Write-Utf8NoBom -Path (Join-Path $OutputDir 'dashboard.html') -Content $embedded
 }
 
 # Baseline diff
@@ -310,15 +328,17 @@ if (Test-Path $baselinePath) {
         [void]$diffSb.AppendLine("Previous: $($prev.meta.collectedAt) score=$($prev.health.score)")
         [void]$diffSb.AppendLine("Current:  $($data.meta.collectedAt) score=$score")
         [void]$diffSb.AppendLine("Score delta: $([math]::Round($score - $prev.health.score,1))")
-        $prevIssues = @($prev.health.issues | ForEach-Object { "$($_.area): $($_.message)" })
-        $currIssues = @($issues | ForEach-Object { "$($_.area): $($_.message)" })
+        # normalize numbers so minor value changes don't show as new+resolved
+        $normalize = { param($s) [regex]::Replace($s, '\d+(\.\d+)?', '#') }
+        $prevIssues = @($prev.health.issues | ForEach-Object { "$($_.area): $(& $normalize $_.message)" })
+        $currIssues = @($issues | ForEach-Object { "$($_.area): $(& $normalize $_.message)" })
         $new = @($currIssues | Where-Object { $_ -notin $prevIssues })
         $resolved = @($prevIssues | Where-Object { $_ -notin $currIssues })
         [void]$diffSb.AppendLine("New issues: $($new.Count)")
         foreach ($n in $new) { [void]$diffSb.AppendLine("  + $n") }
         [void]$diffSb.AppendLine("Resolved: $($resolved.Count)")
         foreach ($r in $resolved) { [void]$diffSb.AppendLine("  - $r") }
-        $diffSb.ToString() | Set-Content (Join-Path $OutputDir 'diff.md') -Encoding UTF8
+        Write-Utf8NoBom -Path (Join-Path $OutputDir 'diff.md') -Content $diffSb.ToString()
         Write-Log "Baseline diff written to diff.md (new=$($new.Count), resolved=$($resolved.Count))" 'INFO'
     } catch { Write-Log "Baseline diff failed: $($_.Exception.Message)" 'WARN' }
 }
@@ -330,6 +350,10 @@ if ($SaveBaseline) {
 Write-Log "Health score: $score/100, Issues: $($issues.Count)" 'OK'
 foreach ($i in $issues) { Write-Log "  [$($i.severity.ToUpper())] $($i.area): $($i.message)" $(if ($i.severity -eq 'critical') { 'ERROR' } elseif ($i.severity -eq 'high') { 'WARN' } else { 'INFO' }) }
 Write-Log "Manifest: $($script:Manifest.Count) collectors ($(@($script:Manifest | Where-Object status -eq 'OK').Count) OK, $(@($script:Manifest | Where-Object status -eq 'EMPTY').Count) empty, $(@($script:Manifest | Where-Object status -eq 'FAILED').Count) failed)" 'INFO'
+# Write latest-run pointer so GUI/dashboard can find this run
+$baseOut = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'output' } else { 'output' }
+if (-not (Test-Path $baseOut)) { New-Item -ItemType Directory -Path $baseOut -Force | Out-Null }
+try { Write-Utf8NoBom -Path (Join-Path $baseOut 'latest.txt') -Content $OutputDir } catch {}
 Write-Log "Output: $OutputDir" 'INFO'
 Write-Log "Collection log: $LogFile" 'DEBUG'
 $hasCritical = @($issues | Where-Object { $_.severity -eq 'critical' }).Count -gt 0

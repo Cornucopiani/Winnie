@@ -7,8 +7,24 @@ param(
     [string]$ConfigPath = '',
     [switch]$ShareSafe
 )
-if (-not $DataPath) { $DataPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\data.json' } else { 'output\data.json' } }
-if (-not $OutPath)  { $OutPath  = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\summary.md' } else { 'output\summary.md' } }
+if (-not $DataPath) {
+    $base = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output' } else { 'output' }
+    $latestFile = Join-Path $base 'latest.txt'
+    if (Test-Path $latestFile) {
+        $rd = (Get-Content $latestFile -Raw).Trim()
+        if ($rd -and (Test-Path (Join-Path $rd 'data.json'))) { $DataPath = Join-Path $rd 'data.json' }
+    }
+    if (-not $DataPath) { $DataPath = Join-Path $base 'data.json' }
+}
+if (-not $OutPath) {
+    $base = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output' } else { 'output' }
+    $latestFile = Join-Path $base 'latest.txt'
+    if (Test-Path $latestFile) {
+        $rd = (Get-Content $latestFile -Raw).Trim()
+        if ($rd -and (Test-Path $rd)) { $OutPath = Join-Path $rd 'summary.md' }
+    }
+    if (-not $OutPath) { $OutPath = Join-Path $base 'summary.md' }
+}
 if (-not $ConfigPath) { $ConfigPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\config\config.json' } else { 'config\config.json' } }
 
 $ErrorActionPreference = 'Continue'
@@ -69,7 +85,7 @@ function Build-Summary([double]$Detail = 1.0) {
     L "- RAM used: $($data.performance.memoryUsedPercent)% ($($data.performance.freeRamMB) MB free)"
     L "- Disk queue: $($data.performance.diskQueueLength)"
     if ($data.perfSampled) {
-        L "- Sampled top CPU: " + (($data.perfSampled.sampledCpu | Select-Object -First 5 | ForEach-Object { "$($_.name)=$($_.avgCpu)%" }) -join ', ')
+        L ("- Sampled top CPU: " + (($data.perfSampled.sampledCpu | Select-Object -First 5 | ForEach-Object { "$($_.name)=$($_.avgCpu)%" }) -join ', '))
         L "- Commit charge: $($data.perfSampled.commitChargeGB) GB, CPU perf: $($data.perfSampled.cpuPerfPct)%"
     }
     L ""
@@ -84,7 +100,7 @@ function Build-Summary([double]$Detail = 1.0) {
         foreach ($d in $data.smart.disks) {
             L "- Disk $($d.diskIndex) ($($d.model)): predictFailure=$($d.predictFailure)"
             $bad = @($d.attributes | Where-Object { $_.id -in 5,196,197,198 -and $_.raw -gt 0 })
-            if ($bad.Count -gt 0) { L "  bad sectors: " + (($bad | ForEach-Object { "$($_.name)=$($_.raw)" }) -join ', ') }
+            if ($bad.Count -gt 0) { L ("  bad sectors: " + (($bad | ForEach-Object { "$($_.name)=$($_.raw)" }) -join ', ')) }
         }
     } else { L "- No native SMART data" }
     if ($data.smartctl.available -and $data.smartctl.devices) {
@@ -99,7 +115,7 @@ function Build-Summary([double]$Detail = 1.0) {
     L ""
 
     L "## Network"
-    L "- Pings: " + (($data.network.pings | ForEach-Object { "$($_.target)=$($_.success) ($($_.latency)ms)" }) -join ', ')
+    L ("- Pings: " + (($data.network.pings | ForEach-Object { "$($_.target)=$($_.success) ($($_.latency)ms)" }) -join ', '))
     if ($data.network.ipConfig) { foreach ($i in $data.network.ipConfig) {
         $ip = if ($ShareSafe) { ($i.ipv4 -replace '\d+$','xxx') } else { $i.ipv4 }
         $gw = if ($ShareSafe) { if ($i.gateway) { ($i.gateway -replace '\d+$','xxx') } else { $i.gateway } } else { $i.gateway }
@@ -107,8 +123,8 @@ function Build-Summary([double]$Detail = 1.0) {
     } }
     L "- Listening ports: $($data.network.listeningPorts.Count)"
     L "- Proxy: $($data.network.proxy)"
-    if ($data.network.dnsResolution) { L "- DNS resolution: " + (($data.network.dnsResolution | ForEach-Object { "$($_.name)=$($_.result)" }) -join ', ') }
-    if ($data.network.portTests) { L "- DC port tests: " + (($data.network.portTests | ForEach-Object { "$($_.port)=$($_.success)" }) -join ', ') }
+    if ($data.network.dnsResolution) { L ("- DNS resolution: " + (($data.network.dnsResolution | ForEach-Object { "$($_.name)=$($_.result)" }) -join ', ')) }
+    if ($data.network.portTests) { L ("- DC port tests: " + (($data.network.portTests | ForEach-Object { "$($_.port)=$($_.success)" }) -join ', ')) }
     L ""
 
     L "## Failed Auto-Start Services ($($data.services.failedAuto.Count))"
@@ -138,9 +154,11 @@ function Build-Summary([double]$Detail = 1.0) {
 
     L "## Security"
     if ($data.security.defender) { L "- Defender RT protection: $($data.security.defender.realTimeProtection), AV: $($data.security.defender.antivirusEnabled), defs: $($data.security.defender.definitionsUpdated)" }
-    L "- Firewall: " + (($data.security.firewall | ForEach-Object { "$($_.profile)=$($_.enabled)" }) -join ', ')
-    L "- BitLocker: " + (($data.security.bitlocker | ForEach-Object { "$($_.drive)=$($_.protection)" }) -join ', ')
-    L "- SecureBoot: $($data.security.secureBoot), TPM: $($data.security.tpm.present)/$($data.security.tpm.ready), UAC: $($data.security.uacEnabled)"
+    L ("- Firewall: " + (($data.security.firewall | ForEach-Object { "$($_.profile)=$($_.enabled)" }) -join ', '))
+    $blStr = if ($data.security.bitlocker -and $data.security.bitlocker.drive) { ($data.security.bitlocker | ForEach-Object { "$($_.drive)=$($_.protection)" }) -join ', ' } else { 'n/a (needs admin)' }
+    L "- BitLocker: $blStr"
+    $tpmStr = if ($data.security.tpm) { "$($data.security.tpm.present)/$($data.security.tpm.ready)" } else { 'n/a (needs admin)' }
+    L "- SecureBoot: $($data.security.secureBoot), TPM: $tpmStr, UAC: $($data.security.uacEnabled)"
     L ""
 
     $maxProc = if ($Detail -ge 1.0) { 10 } elseif ($Detail -ge 0.6) { 5 } else { 3 }
@@ -163,7 +181,7 @@ function Build-Summary([double]$Detail = 1.0) {
     if ($data.updatesFirmware) {
         L "- BIOS: $($data.updatesFirmware.biosVersion) ($($data.updatesFirmware.biosDate))"
         L "- Failed installs: $($data.updatesFirmware.failedCount)"
-        if ($data.updatesFirmware.oldDrivers) { L "- Oldest drivers: " + (($data.updatesFirmware.oldDrivers | Select-Object -First 3 | ForEach-Object { "$($_.DeviceName) ($($_.DriverDate))" }) -join '; ') }
+        if ($data.updatesFirmware.oldDrivers) { L ("- Oldest drivers: " + (($data.updatesFirmware.oldDrivers | Select-Object -First 3 | ForEach-Object { "$($_.DeviceName) ($($_.DriverDate))" }) -join '; ')) }
     }
     L ""
 
@@ -219,7 +237,7 @@ function Build-Summary([double]$Detail = 1.0) {
         }
         if ($data.deep.identity) {
             L "## Deep: Identity"
-            if ($data.deep.identity.dsregParsed) { L "- dsreg: " + (($data.deep.identity.dsregParsed.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ') }
+            if ($data.deep.identity.dsregParsed) { L ("- dsreg: " + (($data.deep.identity.dsregParsed.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')) }
             L "- Secure channel: $($data.deep.identity.secureChannel)"
             if ($data.deep.identity.officeConfig) { L "- Office: $($data.deep.identity.officeConfig.version) ($($data.deep.identity.officeConfig.channel))" }
             L ""
@@ -233,7 +251,7 @@ function Build-Summary([double]$Detail = 1.0) {
         }
         if ($data.deep.storageDeep) {
             L "## Deep: Storage"
-            if ($data.deep.storageDeep.topFolders) { L "- Top folders: " + (($data.deep.storageDeep.topFolders | Select-Object -First 5 | ForEach-Object { "$($_.folder)=$($_.sizeGB)GB" }) -join ', ') }
+            if ($data.deep.storageDeep.topFolders) { L ("- Top folders: " + (($data.deep.storageDeep.topFolders | Select-Object -First 5 | ForEach-Object { "$($_.folder)=$($_.sizeGB)GB" }) -join ', ')) }
             if ($data.deep.storageDeep.diskImages) { L "- Disk images: $($data.deep.storageDeep.diskImages.Count)" }
             L ""
         }

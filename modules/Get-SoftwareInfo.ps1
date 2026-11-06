@@ -20,7 +20,8 @@ function Get-SoftwareInfo {
         $startup = @()
         try {
             $startup += Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue |
-                Select-Object Name, Command, Location, User
+                Select-Object Name, Command, Location, User |
+                Sort-Object Location, Name -Unique
         } catch {}
         [pscustomobject]@{
             count = $apps.Count

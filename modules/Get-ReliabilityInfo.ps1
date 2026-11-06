@@ -3,8 +3,9 @@ function Get-ReliabilityInfo {
     param([int]$Days = 30)
     try {
         $since = (Get-Date).AddDays(-$Days)
+        $crashSources = @('Application Error','Application Hang','Windows Error Reporting','BugCheck','Kernel-Power','.NET Runtime','Service Control Manager')
         $records = Get-CimInstance Win32_ReliabilityRecords -ErrorAction SilentlyContinue |
-            Where-Object { $_.TimeGenerated -ge $since } |
+            Where-Object { $_.TimeGenerated -ge $since -and ($_.SourceName -in $crashSources -or $_.EventIdentifier -in 1000,1001,1002,1026) } |
             Select-Object -First 40 TimeGenerated, SourceName, ProductName, EventIdentifier, Message
         $records = @($records | ForEach-Object {
             $msg = $_.Message

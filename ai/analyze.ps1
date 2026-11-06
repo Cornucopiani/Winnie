@@ -7,8 +7,24 @@ param(
     [string]$OutPath     = '',
     [string]$ConfigPath  = ''
 )
-if (-not $SummaryPath) { $SummaryPath = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\summary.md' } else { 'output\summary.md' } }
-if (-not $OutPath)     { $OutPath     = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output\analysis.md' } else { 'output\analysis.md' } }
+if (-not $SummaryPath) {
+    $base = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output' } else { 'output' }
+    $latestFile = Join-Path $base 'latest.txt'
+    if (Test-Path $latestFile) {
+        $rd = (Get-Content $latestFile -Raw).Trim()
+        if ($rd -and (Test-Path (Join-Path $rd 'summary.md'))) { $SummaryPath = Join-Path $rd 'summary.md' }
+    }
+    if (-not $SummaryPath) { $SummaryPath = Join-Path $base 'summary.md' }
+}
+if (-not $OutPath) {
+    $base = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\output' } else { 'output' }
+    $latestFile = Join-Path $base 'latest.txt'
+    if (Test-Path $latestFile) {
+        $rd = (Get-Content $latestFile -Raw).Trim()
+        if ($rd -and (Test-Path $rd)) { $OutPath = Join-Path $rd 'analysis.md' }
+    }
+    if (-not $OutPath) { $OutPath = Join-Path $base 'analysis.md' }
+}
 if (-not $ConfigPath)  { $ConfigPath  = if ($PSScriptRoot) { Join-Path $PSScriptRoot '..\config\config.json' } else { 'config\config.json' } }
 $ErrorActionPreference = 'Stop'
 if (-not $PSScriptRoot) { $PSScriptRoot = Split-Path -Parent $PSCommandPath }

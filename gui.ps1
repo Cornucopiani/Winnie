@@ -21,8 +21,16 @@ if (-not $collectPath -or -not (Test-Path -LiteralPath $collectPath)) {
 }
 if (-not $collectPath) { $collectPath = 'collect.ps1' }
 if (-not $root) { $root = (Get-Location).Path }
-$dataPath = if ($root) { Join-Path $root 'output\data.json' } else { 'output\data.json' }
-$dashboardPath = if ($root) { Join-Path $root 'output\dashboard.html' } else { 'output\dashboard.html' }
+# Resolve latest run folder (timestamped) via latest.txt
+$baseOut = if ($root) { Join-Path $root 'output' } else { 'output' }
+$latestFile = Join-Path $baseOut 'latest.txt'
+$script:runDir = $baseOut
+if (Test-Path $latestFile) {
+    $rd = (Get-Content $latestFile -Raw).Trim()
+    if ($rd -and (Test-Path $rd)) { $script:runDir = $rd }
+}
+$dataPath = Join-Path $script:runDir 'data.json'
+$dashboardPath = Join-Path $script:runDir 'dashboard.html'
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -148,6 +156,11 @@ function Finalize-Run {
     if ($script:finalizing) { return }
     $script:finalizing = $true
     $script:timer.Stop()
+    # re-resolve run folder
+    $baseOut2 = if ($root) { Join-Path $root 'output' } else { 'output' }
+    $lf = Join-Path $baseOut2 'latest.txt'
+    if (Test-Path $lf) { $rd = (Get-Content $lf -Raw).Trim(); if ($rd -and (Test-Path $rd)) { $script:runDir = $rd } }
+    if ($script:runDir) { $script:dataPath = Join-Path $script:runDir 'data.json'; $script:dashboardPath = Join-Path $script:runDir 'dashboard.html' }
     # drain remaining
     try {
         if ($script:logFile -and (Test-Path $script:logFile)) {

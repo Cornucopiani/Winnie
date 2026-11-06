@@ -14,7 +14,7 @@ function Get-EventLogInfo {
                     log     = $log
                     time    = $e.TimeCreated.ToString('o')
                     id      = $e.Id
-                    level   = $e.LevelDisplayName
+                    level   = if ($e.LevelDisplayName) { $e.LevelDisplayName } elseif ($e.Level -eq 0) { 'LogAlways' } else { 'Unknown' }
                     source  = $e.ProviderName
                     message = ($msg -replace '\s+',' ')
                 }

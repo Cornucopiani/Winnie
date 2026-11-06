@@ -37,6 +37,10 @@ function Get-HardwareInfo {
                 if ($bStatic.DesignedCapacity -and $bFull.FullChargedCapacity) {
                     $wear = [math]::Round(100 - (100 * $bFull.FullChargedCapacity / $bStatic.DesignedCapacity), 1)
                 }
+                # fallback to powercfg battery report
+                if ($null -eq $wear -and $battReport.designCapacity -and $battReport.fullChargeCapacity) {
+                    $wear = [math]::Round(100 - (100 * $battReport.fullChargeCapacity / $battReport.designCapacity), 1)
+                }
                 [pscustomobject]@{
                     name                 = $b.Name
                     status               = $b.BatteryStatus
