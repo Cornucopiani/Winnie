@@ -125,54 +125,79 @@ $log.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
 $log.Font = New-Object System.Drawing.Font('Consolas', 9)
 $form.Controls.Add($log)
 
+$guiLogPath = $null
+try { if ($root) { $guiLogPath = Join-Path $root 'output\gui.log' } } catch {}
 function Append-Log($text) {
     $log.AppendText($text + "`r`n")
     $log.ScrollToCaret()
+    if ($guiLogPath) {
+        try { Add-Content -LiteralPath $guiLogPath -Value $text -ErrorAction SilentlyContinue } catch {}
+    }
 }
 
-# ---------- Timer-based collection (avoids PowerShell runspace issues) ----------
+# ---------- File-redirected collection (most reliable across PS2EXE) ----------
 $script:proc = $null
+$script:stdoutFile = $null
+$script:stderrFile = $null
+$script:stdoutPos = 0
+$script:stderrPos = 0
+$script:finalizing = $false
 $script:timer = New-Object System.Windows.Forms.Timer
-$script:timer.Interval = 100
+$script:timer.Interval = 200
+function Finalize-Run {
+    if ($script:finalizing) { return }
+    $script:finalizing = $true
+    $script:timer.Stop()
+    # drain remaining
+    try {
+        $so = $script:proc.StandardOutput
+        while ($so.Peek() -ne -1) { $line = $so.ReadLine(); if ($line) { Append-Log $line } }
+        $se = $script:proc.StandardError
+        while ($se.Peek() -ne -1) { $line = $se.ReadLine(); if ($line) { Append-Log "STDERR: $line" } }
+    } catch {}
+    $progress.Style = 'Blocks'
+    $progress.Value = 100
+    $progress.MarqueeAnimationSpeed = 0
+    $btnRun.Enabled = $true
+    $btnSum.Enabled = $true
+    $btnAna.Enabled = $true
+    try {
+        if (Test-Path $dataPath) {
+            $d = Get-Content $dataPath -Raw | ConvertFrom-Json
+            $status.Text = "Done. Health score: $($d.health.score)/100 | Issues: $($d.health.issues.Count)"
+            Append-Log "----- Health score: $($d.health.score)/100, $($d.health.issues.Count) issues -----"
+        } else {
+            $status.Text = 'Done (no data.json produced)'
+        }
+    } catch {
+        $status.Text = 'Done.'
+        Append-Log "Finalize error: $($_.Exception.Message)"
+    }
+    $script:proc = $null
+    $script:finalizing = $false
+}
 $script:timer.Add_Tick({
     if ($null -eq $script:proc) { return }
-    # drain stdout
-    while ($script:proc.StandardOutput.Peek() -ne -1) {
-        $line = $script:proc.StandardOutput.ReadLine()
-        if ($line) { Append-Log $line }
-    }
-    while ($script:proc.StandardError.Peek() -ne -1) {
-        $line = $script:proc.StandardError.ReadLine()
-        if ($line) { Append-Log "STDERR: $line" }
-    }
-    if ($script:proc.HasExited) {
-        $script:timer.Stop()
-        $progress.Style = 'Blocks'
-        $progress.Value = 100
-        $progress.MarqueeAnimationSpeed = 0
-        $btnRun.Enabled = $true
-        $btnSum.Enabled = $true
-        $btnAna.Enabled = $true
-        try {
-            if (Test-Path $dataPath) {
-                $d = Get-Content $dataPath -Raw | ConvertFrom-Json
-                $status.Text = "Done. Health score: $($d.health.score)/100 | Issues: $($d.health.issues.Count)"
-                Append-Log "----- Health score: $($d.health.score)/100, $($d.health.issues.Count) issues -----"
-            } else {
-                $status.Text = 'Done (no data.json produced)'
-            }
-        } catch {
-            $status.Text = 'Done.'
-            Append-Log "Finalize error: $($_.Exception.Message)"
+    try {
+        $so = $script:proc.StandardOutput
+        while ($so.Peek() -ne -1) {
+            $line = $so.ReadLine()
+            if ($line) { Append-Log $line }
         }
-        $script:proc = $null
-    }
+        $se = $script:proc.StandardError
+        while ($se.Peek() -ne -1) {
+            $line = $se.ReadLine()
+            if ($line) { Append-Log "STDERR: $line" }
+        }
+    } catch { Append-Log "Timer error: $($_.Exception.Message)" }
+    if ($script:proc.HasExited) { Finalize-Run }
 })
 
 # ---------- Button handlers ----------
 $btnRun.Add_Click({
     try {
     Append-Log '>>> Run button clicked'
+    if ($guiLogPath) { try { Set-Content -LiteralPath $guiLogPath -Value '' -ErrorAction SilentlyContinue } catch {} }
     if (-not (Test-Path $collectPath)) {
         Append-Log "ERROR: collect.ps1 not found. Root='$root' CollectPath='$collectPath'"
         return
@@ -195,6 +220,10 @@ $btnRun.Add_Click({
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    $args = "-NoLogo -ExecutionPolicy Bypass -NoProfile -File `"$collectPath`" -Mode $mode"
+    if ($deepCheck.Checked) { $args += " -DeepScan" }
+    $psi.Arguments = $args
+    $script:finalizing = $false
     $script:proc = [System.Diagnostics.Process]::Start($psi)
     $script:timer.Start()
     } catch { Append-Log "RUN ERROR: $($_.Exception.Message)" }
